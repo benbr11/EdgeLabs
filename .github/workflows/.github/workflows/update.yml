@@ -1,0 +1,37 @@
+name: Update predictions
+on:
+  schedule:
+    - cron: "0 8 * * *"
+    - cron: "0 20 * * *"
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build predictions from the latest data
+        run: |
+          python build_context.py
+          python build_ratings.py --refresh
+          python export_web.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deploy
+        uses: actions/deploy-pages@v4

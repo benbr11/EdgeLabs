@@ -3,21 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b3d2e">
+<meta name="theme-color" content="#0b2a5e">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>World Cup 2026 Predictor</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
-  --bg:#0a0e14; --panel:#121823; --panel2:#1a2230; --line:#26303f;
-  --txt:#e6edf3; --mut:#8b98a9; --grn:#2ecc71; --grnd:#0b3d2e;
-  --red:#e74c3c; --amb:#f1c40f; --blue:#4aa3ff; --accent:#2ecc71;
+  --bg:#0a0f1a; --panel:#111a2c; --panel2:#1a2540; --line:#26334d;
+  --txt:#e7edf8; --mut:#8ea2c4;
+  --accent:#3b82f6; --accent2:#60a5fa; --headfrom:#0b2a5e; --headto:#0a1f44; --headtxt:#dbe6ff;
+  --teamA:#3b82f6; --teamB:#f59e0b; --draw:#64748b; --good:#22d3ee;
+}
+body.light{
+  --bg:#eef3fb; --panel:#ffffff; --panel2:#f1f5fc; --line:#d6e0ef;
+  --txt:#0e1b30; --mut:#56678a;
+  --accent:#2563eb; --accent2:#1d4ed8; --headfrom:#1d4ed8; --headto:#2563eb; --headtxt:#eaf1ff;
+  --teamA:#2563eb; --teamB:#d97706; --draw:#94a3b8; --good:#0891b2;
 }
 *{box-sizing:border-box} html,body{margin:0}
 body{background:var(--bg);color:var(--txt);font:15px/1.45 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-  -webkit-font-smoothing:antialiased;padding-bottom:60px}
-header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0b3d2e,#0a2a20);
-  padding:14px 16px;border-bottom:1px solid var(--line)}
-header h1{margin:0;font-size:18px;letter-spacing:.3px} header .sub{color:#a9e7c6;font-size:12px;margin-top:2px}
+  -webkit-font-smoothing:antialiased;padding-bottom:60px;transition:background .2s,color .2s}
+header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,var(--headfrom),var(--headto));
+  padding:14px 16px;border-bottom:1px solid var(--line);color:var(--headtxt)}
+header h1{margin:0;font-size:18px;letter-spacing:.3px} header .sub{color:#a9c2ef;font-size:12px;margin-top:2px}
+.themetoggle{position:absolute;top:12px;right:14px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);
+  color:var(--headtxt);border-radius:10px;padding:6px 10px;font-size:15px;cursor:pointer}
 nav{display:flex;gap:4px;overflow-x:auto;background:var(--panel);border-bottom:1px solid var(--line);
   position:sticky;top:57px;z-index:4}
 nav button{flex:1 0 auto;background:none;border:none;color:var(--mut);padding:12px 14px;font-size:13px;
@@ -26,54 +36,56 @@ nav button.on{color:var(--txt);border-bottom-color:var(--accent)}
 main{max-width:760px;margin:0 auto;padding:16px}
 section{display:none} section.on{display:block}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
-.row{display:flex;gap:10px;align-items:center}
-.row.wrap{flex-wrap:wrap}
-select,input{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:10px;
-  padding:10px;font-size:15px;width:100%}
+.row{display:flex;gap:10px;align-items:center} .row.wrap{flex-wrap:wrap}
+select,input{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px;width:100%}
 label{font-size:12px;color:var(--mut);display:block;margin:0 0 4px}
 .vs{color:var(--mut);font-weight:700;padding:0 4px}
-.btn{background:var(--accent);color:#062014;border:none;border-radius:10px;padding:12px 16px;font-weight:700;
-  font-size:15px;cursor:pointer;width:100%;margin-top:4px}
-.btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:12px 16px;font-weight:700;font-size:15px;cursor:pointer;width:100%;margin-top:4px}
 .note{font-size:12.5px;color:var(--mut);margin:8px 0}
 .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px}
-.tag.clinch{background:#10371f;color:#7ee2a8} .tag.elim{background:#3a1410;color:#ff9b8a}
-.tag.live{background:#102a45;color:#8cc6ff} .tag.ko{background:#3a2e10;color:#ffe08a}
+.tag.clinch{background:#0e2a4d;color:#7fb6ff} .tag.elim{background:#3a1410;color:#ff9b8a}
+.tag.live{background:#10243d;color:#9cc2ff} .tag.ko{background:#2a2410;color:#ffe08a}
+body.light .tag.clinch{background:#dbeafe;color:#1d4ed8} body.light .tag.elim{background:#fde2dd;color:#b42318}
+body.light .tag.live{background:#e2ecfb;color:#2456c4} body.light .tag.ko{background:#fdf0cf;color:#9a6a00}
 .probbar{display:flex;height:30px;border-radius:8px;overflow:hidden;margin:10px 0;font-size:12px;font-weight:700}
-.probbar>div{display:flex;align-items:center;justify-content:center;color:#06140c;min-width:0;white-space:nowrap}
-.sA{background:var(--grn)} .sD{background:#5b6878;color:#fff} .sB{background:var(--blue)}
+.probbar>div{display:flex;align-items:center;justify-content:center;min-width:0;white-space:nowrap}
+.sA{background:var(--teamA);color:#fff} .sD{background:var(--draw);color:#fff} .sB{background:var(--teamB);color:#20160a}
 .big{display:flex;justify-content:space-around;text-align:center;margin:6px 0}
 .big .n{font-size:30px;font-weight:800} .big .l{font-size:12px;color:var(--mut)}
 .xg{font-size:13px;color:var(--mut);text-align:center;margin-top:2px}
+.statline{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--mut);margin-top:8px}
+.statline b{color:var(--txt)}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th,td{padding:7px 6px;text-align:right;border-bottom:1px solid var(--line)}
 th:first-child,td:first-child{text-align:left}
 th{color:var(--mut);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+td.adv{color:var(--accent2);font-weight:700}
 .scoreline{display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px solid var(--line);font-size:14px}
-.scoreline:last-child{border:none} .scoreline .p{color:var(--accent);font-weight:700}
+.scoreline:last-child{border:none} .scoreline .p{color:var(--accent2);font-weight:700}
 details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
-summary{cursor:pointer;color:var(--accent);font-size:13px;font-weight:600}
+summary{cursor:pointer;color:var(--accent2);font-size:13px;font-weight:600}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .mini{font-size:12px;color:var(--mut)}
-.slate-item,.gteam{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
-.slate-item:last-child{border:none}
-.pill{font-size:12px;color:var(--mut)} .win{color:var(--grn);font-weight:700}
-.edge{color:var(--grn);font-weight:700} .neg{color:var(--mut)}
+.slate-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
+.slate-item:last-child{border:none} .pill{font-size:12px;color:var(--mut)} .win{color:var(--accent2);font-weight:700}
+.edge{color:var(--good);font-weight:700} .neg{color:var(--mut)}
 h3{margin:2px 0 10px;font-size:15px} h4{margin:14px 0 6px;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
 .foot{color:var(--mut);font-size:11.5px;text-align:center;padding:18px}
 .champ{display:flex;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--line)}
 .bar{height:7px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:4px}
 .bar>i{display:block;height:100%;background:var(--accent)}
+.ko-tie{display:flex;justify-content:space-between;padding:8px 2px;border-bottom:1px solid var(--line)}
 </style>
 </head>
 <body>
 <header>
   <h1>⚽ World Cup 2026 Predictor</h1>
   <div class="sub" id="subtitle">loading…</div>
+  <button class="themetoggle" id="themeBtn" title="Toggle light/dark">🌙</button>
 </header>
 <nav>
   <button data-tab="predict" class="on">Predict</button>
-  <button data-tab="groups">Groups</button>
+  <button data-tab="groups" id="tab2">Groups</button>
   <button data-tab="slate">Fixtures</button>
   <button data-tab="bracket">Title odds</button>
 </nav>

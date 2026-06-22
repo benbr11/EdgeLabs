@@ -61,26 +61,30 @@ def stage_of(h, a):
 # --- xG for played matches ---------------------------------------------------
 XG_NAME = {"Cabo Verde": "Cape Verde", "Congo DR": "DR Congo", "Czechia": "Czech Republic",
            "Côte d'Ivoire": "Ivory Coast", "IR Iran": "Iran", "Türkiye": "Turkey", "USA": "United States"}
-mxg = {}
+mxg = {}; mstage = {}
 try:
     for r in csv.DictReader(open(PROJ + r"\wc2026_xg.csv", encoding="utf-8")):
-        if r["status"] != "Completed" or not r["home_xg"]:
-            continue
         h = XG_NAME.get(r["home_team_name"], r["home_team_name"])
         a = XG_NAME.get(r["away_team_name"], r["away_team_name"])
-        mxg[(r["date"], frozenset((h, a)))] = {h: float(r["home_xg"]), a: float(r["away_xg"])}
+        key = (r["date"], frozenset((h, a)))
+        if r.get("stage_name"):
+            mstage[key] = r["stage_name"]
+        if r["status"] == "Completed" and r["home_xg"]:
+            mxg[key] = {h: float(r["home_xg"]), a: float(r["away_xg"])}
 except FileNotFoundError:
     pass
 
 # --- fixtures ----------------------------------------------------------------
 fixtures = []
 for (d, h, a, hs, as_) in played:
-    xg = mxg.get((d, frozenset((h, a))), {})
+    key = (d, frozenset((h, a)))
+    xg = mxg.get(key, {})
     fixtures.append({"date": d, "home": h, "away": a, "status": "played",
-                     "hs": hs, "as": as_, "hxg": xg.get(h), "axg": xg.get(a), "stage": stage_of(h, a)})
+                     "hs": hs, "as": as_, "hxg": xg.get(h), "axg": xg.get(a),
+                     "stage": stage_of(h, a), "round": mstage.get(key)})
 for (d, h, a) in sched:
     fixtures.append({"date": d, "home": h, "away": a, "status": "scheduled",
-                     "stage": stage_of(h, a)})
+                     "stage": stage_of(h, a), "round": mstage.get((d, frozenset((h, a))))})
 fixtures.sort(key=lambda x: x["date"])
 generated = max((f["date"] for f in fixtures if f["status"] == "played"), default="")
 

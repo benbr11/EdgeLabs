@@ -2,10 +2,10 @@
 const D = window.WC_DATA, P = D.params, M = D.mods, T = D.teams;
 const TEAMS = Object.keys(T).sort();
 const el = (h) => { const d = document.createElement("div"); d.innerHTML = h.trim(); return d.firstChild; };
-const pct = (x) => x.toFixed(1) + "%";
 
 /* ----------------------------- prediction math (mirrors simulate.py) ------- */
 function poisson(lam, mg){ const o=[]; let p=Math.exp(-lam); for(let k=0;k<=mg;k++){o.push(p); p*=lam/(k+1);} return o; }
+function rpois(l){ const L=Math.exp(-l); let k=0,p=1; do{k++;p*=Math.random();}while(p>L); return k-1; }
 function dcMatrix(lh, la){
   const mg = Math.max(12, Math.floor(lh+la)+8);
   const ph = poisson(lh,mg), pa = poisson(la,mg), Mx = [];
@@ -26,23 +26,29 @@ function mods(team, avail, rest, stakes, vTemp, vAlt){
   if(vTemp!=null && vTemp>t.home_temp+M.heat_buffer){ const f=Math.max(0,1-M.heat_pen_per_c*(vTemp-t.home_temp-M.heat_buffer)); am*=f; dm*=f; }
   return {am,dm};
 }
-function predict(A,B,o){
-  o=o||{};
-  const host=o.host||null;
-  const vTemp = o.vTemp!=null?o.vTemp : (host?T[host].home_temp:null);
-  const vAlt  = o.vAlt!=null ?o.vAlt  : (host?T[host].home_alt :null);
+function lambdas(A,B,o){
+  o=o||{}; const host=o.host||null;
+  const vTemp=o.vTemp!=null?o.vTemp:(host?T[host].home_temp:null);
+  const vAlt =o.vAlt!=null ?o.vAlt :(host?T[host].home_alt :null);
   const mA=mods(A, o.availA??1, o.restA??4, o.stakesA||"normal", vTemp, vAlt);
   const mB=mods(B, o.availB??1, o.restB??4, o.stakesB||"normal", vTemp, vAlt);
   const w=M.weather[o.weather||"clear"];
   const hfA=host===A?P.home_adv:1, hfB=host===B?P.home_adv:1;
-  const lamA=P.avg*(T[A].att_mult*mA.am)*(T[B].dfn_mult/mB.dm)*hfA*w;
-  const lamB=P.avg*(T[B].att_mult*mB.am)*(T[A].dfn_mult/mA.dm)*hfB*w;
-  const {Mx,mg}=dcMatrix(lamA,lamB);
-  let pA=0,pD=0,pB=0,exA=0,exB=0; const flat=[];
+  return [P.avg*(T[A].att_mult*mA.am)*(T[B].dfn_mult/mB.dm)*hfA*w,
+          P.avg*(T[B].att_mult*mB.am)*(T[A].dfn_mult/mA.dm)*hfB*w];
+}
+function predict(A,B,o){
+  o=o||{};
+  const [lamA,lamB]=lambdas(A,B,o);
+  const {Mx,mg}=dcMatrix(lamA,lamB), rng=[...Array(mg+1).keys()];
+  let pA=0,pD=0,pB=0,exA=0,exB=0,pH0=0,pA0=0; const flat=[];
   for(let i=0;i<=mg;i++)for(let j=0;j<=mg;j++){ const p=Mx[i][j];
-    if(i>j)pA+=p; else if(j>i)pB+=p; else pD+=p; exA+=i*p; exB+=j*p; flat.push([p,i,j]); }
+    if(i>j)pA+=p; else if(j>i)pB+=p; else pD+=p; exA+=i*p; exB+=j*p;
+    if(i===0)pH0+=p; if(j===0)pA0+=p; flat.push([p,i,j]); }
   flat.sort((x,y)=>y[0]-x[0]);
+  const btts=Math.max(0,1-pH0-pA0+Mx[0][0]);
   const r={A,B,lamA,lamB,pA:pA*100,pD:pD*100,pB:pB*100,exA,exB,
+           btts:btts*100, csA:pA0*100, csB:pH0*100,
            top:flat.slice(0,3).map(([p,i,j])=>({i,j,p:p*100}))};
   if(o.knockout){
     const et=dcMatrix(lamA/3,lamB/3); let qa=0,qb=0,qd=0;
@@ -58,6 +64,30 @@ function stageOf(A,B){ const gA=T[A]&&T[A].group, gB=T[B]&&T[B].group;
 function hostOf(A,B){ if(P.hosts.includes(A))return A; if(P.hosts.includes(B))return B; return null; }
 const stakeTag = (s)=> s==="clinched"?'<span class="tag clinch">clinched · rests</span>'
   : s==="eliminated"?'<span class="tag elim">eliminated</span>' : '<span class="tag live">live</span>';
+
+/* group advance odds: Monte-Carlo the remaining group games -> % to reach knockouts
+   (top 2 of each group + the 8 best third-placed teams). */
+function groupAdvanceOdds(){
+  if(window._advCache) return window._advCache;
+  const N=5000, rem=[];
+  D.groups.forEach((g,gi)=>g.remaining.forEach(([h,a])=>{
+    const [lh,la]=lambdas(h,a,{host:hostOf(h,a)}); rem.push({gi,h,la,lh,a}); }));
+  const base=D.groups.map(g=>g.table.map(r=>({team:r.team,pts:r.pts,gf:r.gf,ga:r.ga})));
+  const adv={}; D.groups.forEach(g=>g.table.forEach(r=>adv[r.team]=0));
+  const cmp=(x,y)=> y.pts-x.pts || (y.gf-y.ga)-(x.gf-x.ga) || y.gf-x.gf;
+  for(let s=0;s<N;s++){
+    const st=base.map(grp=>grp.map(r=>({team:r.team,pts:r.pts,gf:r.gf,ga:r.ga})));
+    const idx={}; st.forEach(grp=>grp.forEach(r=>idx[r.team]=r));
+    rem.forEach(m=>{ const hh=rpois(m.lh), aa=rpois(m.la), H=idx[m.h], A=idx[m.a];
+      H.gf+=hh;H.ga+=aa;A.gf+=aa;A.ga+=hh;
+      if(hh>aa)H.pts+=3; else if(aa>hh)A.pts+=3; else {H.pts++;A.pts++;} });
+    const thirds=[];
+    st.forEach(grp=>{ const o=[...grp].sort(cmp); adv[o[0].team]++; adv[o[1].team]++; if(o[2])thirds.push(o[2]); });
+    thirds.sort(cmp); thirds.slice(0,8).forEach(t=>adv[t.team]++);
+  }
+  const out={}; for(const t in adv) out[t]=adv[t]/N*100;
+  window._advCache=out; return out;
+}
 
 /* --------------------------------- PREDICT screen -------------------------- */
 function predictScreen(){
@@ -92,40 +122,35 @@ function predictScreen(){
   </div>`);
   sec.appendChild(card);
   const $=(id)=>card.querySelector(id);
-  $("#selA").selectedIndex=TEAMS.indexOf("Argentina"); $("#selB").selectedIndex=TEAMS.indexOf("Brazil");
+  $("#selA").selectedIndex=Math.max(0,TEAMS.indexOf("Argentina")); $("#selB").selectedIndex=Math.max(0,TEAMS.indexOf("Brazil"));
   $("#avA").oninput=()=>$("#avAl").textContent=$("#avA").value+"%";
   $("#avB").oninput=()=>$("#avBl").textContent=$("#avB").value+"%";
   const refreshStage=()=>{
     const A=$("#selA").value,B=$("#selB").value;
     if(A===B){$("#stageNote").innerHTML="Pick two different teams.";return;}
     const st=stageOf(A,B);
-    let s = st==="group" ? `Group stage · ${A} ${stakeTag(T[A].stakes)} &nbsp; ${B} ${stakeTag(T[B].stakes)}`
+    $("#stageNote").innerHTML = st==="group" ? `Group stage · ${A} ${stakeTag(T[A].stakes)} &nbsp; ${B} ${stakeTag(T[B].stakes)}`
       : st==="knockout" ? `<span class="tag ko">Knockout</span> extra time + penalties → who advances`
       : `Stage <b>unknown</b> (knockout bracket not set yet) — set "Knockout tie?" if this is a KO.`;
-    $("#stageNote").innerHTML=s;
   };
   $("#selA").onchange=refreshStage; $("#selB").onchange=refreshStage; refreshStage();
   $("#go").onclick=()=>{
     const A=$("#selA").value,B=$("#selB").value; if(A===B){$("#out").innerHTML='<div class="note">Pick two different teams.</div>';return;}
     const st=stageOf(A,B);
-    let ko = $("#ko").value==="auto" ? st==="knockout" : $("#ko").value==="yes";
+    const ko = $("#ko").value==="auto" ? st==="knockout" : $("#ko").value==="yes";
     let host=null; const vsel=$("#venue").value;
     if(vsel==="auto") host=hostOf(A,B); else if(vsel==="A")host=A; else if(vsel==="B")host=B;
-    const o={knockout:ko, host:host,
-      availA:+$("#avA").value/100, availB:+$("#avB").value/100, restA:+$("#rA").value, restB:+$("#rB").value,
-      weather:$("#wx").value, vTemp: $("#vt").value!==""?+$("#vt").value:null };
+    const o={knockout:ko, host:host, availA:+$("#avA").value/100, availB:+$("#avB").value/100,
+      restA:+$("#rA").value, restB:+$("#rB").value, weather:$("#wx").value, vTemp:$("#vt").value!==""?+$("#vt").value:null};
     if(!ko && st==="group"){ o.stakesA=T[A].stakes; o.stakesB=T[B].stakes; }
-    const r=predict(A,B,o);
-    const odds=[+$("#oA").value,+$("#oD").value,+$("#oB").value];
-    $("#out").innerHTML=renderResult(r,ko,odds);
+    $("#out").innerHTML=renderResult(predict(A,B,o), ko, [+$("#oA").value,+$("#oD").value,+$("#oB").value]);
   };
 }
 function renderResult(r,ko,odds){
   const {A,B}=r; let h="";
   if(ko){
-    const aw=Math.max(2,r.advA), bw=Math.max(2,r.advB);
-    h+=`<div class="probbar"><div class="sA" style="width:${aw}%">${A.slice(0,3).toUpperCase()} ${r.advA.toFixed(0)}%</div>
-        <div class="sB" style="width:${bw}%">${B.slice(0,3).toUpperCase()} ${r.advB.toFixed(0)}%</div></div>
+    h+=`<div class="probbar"><div class="sA" style="width:${Math.max(2,r.advA)}%">${r.advA.toFixed(0)}%</div>
+        <div class="sB" style="width:${Math.max(2,r.advB)}%">${r.advB.toFixed(0)}%</div></div>
         <div class="big"><div><div class="n">${r.advA.toFixed(1)}%</div><div class="l">${A} advance</div></div>
         <div><div class="n">${r.advB.toFixed(1)}%</div><div class="l">${B} advance</div></div></div>
         <div class="xg">90 min: ${A} ${r.pA.toFixed(0)}% / draw ${r.pD.toFixed(0)}% / ${B} ${r.pB.toFixed(0)}% · extra time ${r.pET.toFixed(0)}% · penalties ${r.pPen.toFixed(1)}%</div>`;
@@ -138,11 +163,12 @@ function renderResult(r,ko,odds){
         <div><div class="n">${r.pB.toFixed(1)}%</div><div class="l">${B} win</div></div></div>`;
   }
   h+=`<div class="xg">Expected goals — ${A} <b>${r.exA.toFixed(2)}</b> · ${B} <b>${r.exB.toFixed(2)}</b></div>`;
+  h+=`<div class="statline"><span>Both teams to score: <b>${r.btts.toFixed(0)}%</b></span>
+      <span>Clean sheet — ${A} <b>${r.csA.toFixed(0)}%</b></span><span>${B} <b>${r.csB.toFixed(0)}%</b></span></div>`;
   h+=`<h4>Most likely scorelines</h4>`;
   h+=r.top.map(s=>`<div class="scoreline"><span>${A} ${s.i} – ${s.j} ${B}</span><span class="p">${s.p.toFixed(1)}%</span></div>`).join("");
   if(odds[0]>1&&odds[1]>1&&odds[2]>1){
-    const raw=[1/odds[0],1/odds[1],1/odds[2]], ov=raw[0]+raw[1]+raw[2];
-    const mp=[r.pA/100,r.pD/100,r.pB/100], lab=[A,"Draw",B];
+    const raw=[1/odds[0],1/odds[1],1/odds[2]], ov=raw[0]+raw[1]+raw[2], mp=[r.pA/100,r.pD/100,r.pB/100], lab=[A,"Draw",B];
     h+=`<h4>Edge vs market (overround ${((ov-1)*100).toFixed(1)}%)</h4><table><tr><th>Outcome</th><th>Model</th><th>Mkt</th><th>Odds</th><th>EV</th></tr>`;
     for(let i=0;i<3;i++){ const ev=mp[i]*odds[i]-1;
       h+=`<tr><td>${lab[i]}</td><td>${(mp[i]*100).toFixed(1)}%</td><td>${(raw[i]/ov*100).toFixed(1)}%</td><td>${odds[i].toFixed(2)}</td>
@@ -152,15 +178,37 @@ function renderResult(r,ko,odds){
   return h;
 }
 
-/* --------------------------------- GROUPS screen --------------------------- */
+/* --------------------------------- GROUPS screen (with advance %) ---------- */
 function groupsScreen(){
   const sec=document.getElementById("groups"); sec.innerHTML="";
+  sec.appendChild(el(`<div class="card"><h3>Group standings</h3><div class="mini">“Adv%” = chance to reach the knockouts (top 2 of the group, or one of the 8 best third-placed teams), from simulating every remaining group game.</div></div>`));
+  const adv=groupAdvanceOdds();
   D.groups.forEach(g=>{
-    let rows=g.table.map(r=>{const s=T[r.team].stakes;
-      return `<tr><td>${r.team} ${r.P>=2?stakeTag(s):''}</td><td>${r.P}</td><td><b>${r.pts}</b></td><td>${r.gf}-${r.ga}</td><td>${r.gd>=0?'+':''}${r.gd}</td></tr>`;}).join("");
-    let rem=g.remaining.length?`<div class="mini" style="margin-top:8px">Remaining: ${g.remaining.map(m=>m[0]+" v "+m[1]).join(" · ")}</div>`:`<div class="mini" style="margin-top:8px">Group complete</div>`;
+    const rows=g.table.map(r=>{const s=T[r.team].stakes; const a=adv[r.team]??0;
+      return `<tr><td>${r.team} ${r.P>=2?stakeTag(s):''}</td><td>${r.P}</td><td><b>${r.pts}</b></td><td>${r.gf}-${r.ga}</td><td>${r.gd>=0?'+':''}${r.gd}</td><td class="adv">${a.toFixed(0)}%</td></tr>`;}).join("");
+    const rem=g.remaining.length?`<div class="mini" style="margin-top:8px">Remaining: ${g.remaining.map(m=>m[0]+" v "+m[1]).join(" · ")}</div>`:`<div class="mini" style="margin-top:8px">Group complete</div>`;
     sec.appendChild(el(`<div class="card"><h3>${g.name}</h3>
-      <table><tr><th>Team</th><th>P</th><th>Pts</th><th>GF-GA</th><th>GD</th></tr>${rows}</table>${rem}</div>`));
+      <table><tr><th>Team</th><th>P</th><th>Pts</th><th>GF-GA</th><th>GD</th><th>Adv%</th></tr>${rows}</table>${rem}</div>`));
+  });
+}
+
+/* --------------------------- KNOCKOUT BRACKET (replaces Groups once over) --- */
+const ROUND_ORDER=["Round of 32","Round of 16","Quarter-finals","Quarter-final","Semi-finals","Semi-final","Final","Play-off for third place","Third place play-off"];
+function koBracketScreen(){
+  const sec=document.getElementById("groups"); sec.innerHTML="";
+  const kos=D.fixtures.filter(f=>f.stage==="knockout");
+  if(!kos.length){ sec.appendChild(el(`<div class="card"><h3>Knockout bracket</h3><div class="note">The bracket will appear here automatically once the group stage ends and the draw is set.</div></div>`)); return; }
+  const byRound={}; kos.forEach(f=>{const r=f.round||"Knockouts"; (byRound[r]=byRound[r]||[]).push(f);});
+  const rounds=Object.keys(byRound).sort((a,b)=>{const ia=ROUND_ORDER.indexOf(a),ib=ROUND_ORDER.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib);});
+  sec.appendChild(el(`<div class="card"><h3>Knockout bracket</h3><div class="mini">Each tie shows the model’s % to advance (extra time + penalties included).</div></div>`));
+  rounds.forEach(rd=>{
+    const ties=byRound[rd].map(f=>{
+      if(!T[f.home]||!T[f.away]) return `<div class="ko-tie"><span>${f.home} v ${f.away}</span><span class="pill">—</span></div>`;
+      const r=predict(f.home,f.away,{knockout:true,host:hostOf(f.home,f.away)});
+      const w=r.advA>=r.advB?f.home:f.away, wp=Math.max(r.advA,r.advB);
+      return `<div class="ko-tie"><span>${f.home} v ${f.away}</span><span><span class="win">${w}</span> <span class="pill">${wp.toFixed(0)}%</span></span></div>`;
+    }).join("");
+    sec.appendChild(el(`<div class="card"><h3>${rd}</h3>${ties}</div>`));
   });
 }
 
@@ -168,21 +216,19 @@ function groupsScreen(){
 function slateScreen(){
   const sec=document.getElementById("slate"); sec.innerHTML="";
   const up=D.fixtures.filter(f=>f.status==="scheduled");
-  const card=el(`<div class="card"><h3>Upcoming fixtures</h3><div class="mini">Auto-predicted with current situations. Tap a match for detail on the Predict tab.</div><div id="list"></div></div>`);
+  const card=el(`<div class="card"><h3>Upcoming fixtures</h3><div class="mini">Auto-predicted with current situations.</div><div id="list"></div></div>`);
   sec.appendChild(card); const list=card.querySelector("#list");
-  if(!up.length){ list.innerHTML='<div class="note">No upcoming fixtures in the data.</div>'; }
+  if(!up.length){ list.innerHTML='<div class="note">No upcoming fixtures in the data.</div>'; return; }
   let curDate="";
   up.forEach(f=>{
     if(f.date!==curDate){ curDate=f.date; list.appendChild(el(`<h4>${f.date}</h4>`)); }
     const A=f.home,B=f.away; if(!T[A]||!T[B])return;
-    const ko=f.stage==="knockout"; const host=hostOf(A,B);
-    const o={knockout:ko,host:host}; if(!ko&&f.stage==="group"){o.stakesA=T[A].stakes;o.stakesB=T[B].stakes;}
+    const ko=f.stage==="knockout", host=hostOf(A,B), o={knockout:ko,host:host};
+    if(!ko&&f.stage==="group"){o.stakesA=T[A].stakes;o.stakesB=T[B].stakes;}
     const r=predict(A,B,o);
-    let summary = ko
-      ? `<span class="win">${r.advA>=r.advB?A:B}</span> ${(Math.max(r.advA,r.advB)).toFixed(0)}% adv`
+    const summary = ko ? `<span class="win">${r.advA>=r.advB?A:B}</span> ${Math.max(r.advA,r.advB).toFixed(0)}% adv`
       : `${A} ${r.pA.toFixed(0)} / D ${r.pD.toFixed(0)} / ${B} ${r.pB.toFixed(0)}`;
-    list.appendChild(el(`<div class="slate-item"><div>${A} <span class="pill">v</span> ${B}${ko?' <span class="tag ko">KO</span>':''}</div>
-      <div class="pill">${summary}</div></div>`));
+    list.appendChild(el(`<div class="slate-item"><div>${A} <span class="pill">v</span> ${B}${ko?' <span class="tag ko">KO</span>':''}</div><div class="pill">${summary}</div></div>`));
   });
 }
 
@@ -191,55 +237,49 @@ const advCache={};
 function advProb(A,B){ const k=A+"|"+B; if(k in advCache)return advCache[k];
   const v=predict(A,B,{knockout:true}).advA/100; advCache[k]=v; advCache[B+"|"+A]=1-v; return v; }
 function projectedQualifiers(){
-  // top 2 of each group + 8 best thirds, by (pts, gd, gf)
-  const cmp=(x,y)=> y.pts-x.pts || y.gd-x.gd || y.gf-x.gf;
-  let q=[], thirds=[];
+  const cmp=(x,y)=> y.pts-x.pts || y.gd-x.gd || y.gf-x.gf; let q=[],thirds=[];
   D.groups.forEach(g=>{ const tb=[...g.table].sort(cmp); q.push(tb[0].team,tb[1].team); if(tb[2])thirds.push(tb[2]); });
-  thirds.sort(cmp); q.push(...thirds.slice(0,8).map(t=>t.team));
-  return q;
+  thirds.sort(cmp); q.push(...thirds.slice(0,8).map(t=>t.team)); return q;
 }
 const SEED32=[1,32,16,17,8,25,9,24,4,29,13,20,5,28,12,21,2,31,15,18,7,26,10,23,3,30,14,19,6,27,11,22];
-function bracketScreen(){
+function titleOddsScreen(){
   const sec=document.getElementById("bracket"); sec.innerHTML="";
   const q=projectedQualifiers();
-  // seed by overall rating
   const seeded=[...new Set(q)].map(t=>({t,r:T[t].att100+T[t].def100})).sort((a,b)=>b.r-a.r).map(o=>o.t).slice(0,32);
-  while(seeded.length<32) seeded.push(seeded[seeded.length-1]); // safety
+  while(seeded.length<32) seeded.push(seeded[seeded.length-1]);
   const order=SEED32.map(s=>seeded[s-1]);
   const N=8000, champ={}, finalist={}; seeded.forEach(t=>{champ[t]=0;finalist[t]=0;});
-  for(let s=0;s<N;s++){
-    let round=order.slice();
-    while(round.length>1){
-      const nxt=[];
-      for(let i=0;i<round.length;i+=2){ const A=round[i],B=round[i+1];
-        const pa=advProb(A,B); nxt.push(Math.random()<pa?A:B); }
-      if(round.length===2){ finalist[round[0]]++; finalist[round[1]]++; }
-      round=nxt;
-    }
-    champ[round[0]]++;
-  }
+  for(let s=0;s<N;s++){ let round=order.slice();
+    while(round.length>1){ const nxt=[];
+      for(let i=0;i<round.length;i+=2){ nxt.push(Math.random()<advProb(round[i],round[i+1])?round[i]:round[i+1]); }
+      if(round.length===2){ finalist[round[0]]++; finalist[round[1]]++; } round=nxt; }
+    champ[round[0]]++; }
   const rows=seeded.map(t=>({t,c:champ[t]/N*100,f:finalist[t]/N*100})).sort((a,b)=>b.c-a.c);
-  const note = P.group_complete ? "Official-stage qualifiers." : "Projected from current standings (group stage in progress)";
-  const card=el(`<div class="card"><h3>Title odds</h3>
-    <div class="mini">${note} · rating-seeded 32-team bracket · ${N.toLocaleString()} simulations.
-    Not the official bracket draw — a projection of who wins it all.</div><div id="ch"></div></div>`);
-  sec.appendChild(card); const ch=card.querySelector("#ch");
-  ch.innerHTML=rows.map(r=>`<div class="champ"><span>${r.t}</span><span style="text-align:right">
+  const note = P.group_complete ? "Qualified teams." : "Projected from current standings (group stage in progress)";
+  const card=el(`<div class="card"><h3>Title odds</h3><div class="mini">${note} · rating-seeded 32-team bracket · ${N.toLocaleString()} simulations. A projection of who wins it all (not the official draw).</div><div id="ch"></div></div>`);
+  sec.appendChild(card);
+  card.querySelector("#ch").innerHTML=rows.map(r=>`<div class="champ"><span>${r.t}</span><span style="text-align:right">
     <b>${r.c.toFixed(1)}%</b> <span class="mini">cup · ${r.f.toFixed(0)}% final</span>
     <div class="bar"><i style="width:${Math.min(100,r.c*2.5)}%"></i></div></span></div>`).join("");
 }
 
-/* --------------------------------- nav + init ------------------------------ */
+/* --------------------------------- theme + nav + init ---------------------- */
+function setTheme(light){ document.body.classList.toggle("light",light);
+  document.getElementById("themeBtn").textContent=light?"☀️":"🌙";
+  try{ localStorage.setItem("wc-theme",light?"light":"dark"); }catch(e){} }
+document.getElementById("themeBtn").onclick=()=>setTheme(!document.body.classList.contains("light"));
+try{ setTheme(localStorage.getItem("wc-theme")==="light"); }catch(e){}
+
+const groupsComplete=P.group_complete;
+document.getElementById("tab2").textContent = groupsComplete ? "Bracket" : "Groups";
 function show(tab){
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
   document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id===tab));
-  if(tab==="groups"&&!document.getElementById("groups").innerHTML) groupsScreen();
+  if(tab==="groups"&&!document.getElementById("groups").innerHTML){ groupsComplete?koBracketScreen():groupsScreen(); }
   if(tab==="slate"&&!document.getElementById("slate").innerHTML) slateScreen();
-  if(tab==="bracket"&&!document.getElementById("bracket").innerHTML) bracketScreen();
+  if(tab==="bracket"&&!document.getElementById("bracket").innerHTML) titleOddsScreen();
 }
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.tab));
-document.getElementById("subtitle").textContent =
-  `48 teams · Dixon-Coles + xG model · data through ${P.generated}`;
-document.getElementById("foot").innerHTML =
-  `Model: 3-source ratings (goals+Elo+FIFA), xG-adjusted, Dixon-Coles, backtested.<br>Data through ${P.generated}. Re-run <code>build_ratings.py --refresh</code> then <code>export_web.py</code> to update.`;
+document.getElementById("subtitle").textContent=`48 teams · Dixon-Coles + xG model · data through ${P.generated}`;
+document.getElementById("foot").innerHTML=`Model: 3-source ratings (goals+Elo+FIFA), xG-adjusted, Dixon-Coles, backtested.<br>Data through ${P.generated}. Updates automatically twice daily.`;
 predictScreen();

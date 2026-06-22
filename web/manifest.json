@@ -1,0 +1,10 @@
+{
+  "name": "World Cup 2026 Predictor",
+  "short_name": "WC Predictor",
+  "start_url": "index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0e14",
+  "theme_color": "#0b3d2e",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

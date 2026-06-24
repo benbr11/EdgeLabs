@@ -181,6 +181,16 @@ header{padding-right:96px}
 .nhlform select,.nhlform input{background:var(--card);color:inherit;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13px;max-width:230px}
 .tdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
 #app-nhl .flag{height:18px;width:auto;vertical-align:middle;margin-right:2px}
+.hubhead{display:flex;align-items:center;gap:12px;max-width:760px;margin:4px auto 16px;padding:0 4px}
+.hubhead h2{margin:0;font-size:20px}
+.wc-feature{display:block;width:100%;max-width:760px;margin:0 auto;text-align:left;border:none;border-radius:20px;padding:22px 24px;cursor:pointer;color:#fff;background:linear-gradient(120deg,#4f8cff,#8a5cff);box-shadow:0 12px 30px rgba(79,140,255,.35);position:relative;transition:transform .12s}
+.wc-feature:hover{transform:translateY(-2px)}
+.wc-live{display:block;font-size:11px;font-weight:700;letter-spacing:.6px;opacity:.92}
+.wc-name{display:block;font-size:26px;font-weight:800;margin:3px 0}
+.wc-desc{display:block;font-size:13px;opacity:.92;max-width:80%}
+.wc-go{position:absolute;right:22px;bottom:20px;font-weight:800;font-size:15px}
+.hub-label{max-width:760px;margin:26px auto 10px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
+.leaguegrid{max-width:760px;margin:0 auto}
 </style>
 </head>
 <body>
@@ -197,13 +207,13 @@ header{padding-right:96px}
     <p class="home-sub">Independent data models that simulate games and surface the edge. Pick a sport to start.</p>
   </div>
   <div class="sportgrid">
-    <button class="sporttile" data-sport="nhl">
+    <button class="sporttile" data-goto="nhl">
       <span class="tileicon"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M13 9 L31 33 L41 33"/><path d="M35 9 L17 33 L7 33"/></g><ellipse cx="24" cy="40" rx="8" ry="3.2" fill="currentColor"/></svg></span>
       <span class="tilename">NHL</span><span class="tilemeta">Hockey · live model</span>
     </button>
-    <button class="sporttile" data-sport="soccer">
+    <button class="sporttile" data-goto="soccer-hub">
       <span class="tileicon"><img src="icon.svg" alt="Soccer"></span>
-      <span class="tilename">Soccer</span><span class="tilemeta">World Cup 2026</span>
+      <span class="tilename">Soccer</span><span class="tilemeta">World Cup + top leagues</span>
     </button>
     <div class="sporttile soon"><span class="tileicon">🏈</span><span class="tilename">NFL</span><span class="tilemeta">coming soon</span></div>
     <div class="sporttile soon"><span class="tileicon">🏀</span><span class="tilename">NBA</span><span class="tilemeta">coming soon</span></div>
@@ -212,9 +222,31 @@ header{padding-right:96px}
   </div>
 </div>
 
+<div id="soccer-hub" class="home">
+  <div class="hubhead">
+    <button class="backbtn" data-goto="home">← Sports</button>
+    <h2>⚽ Soccer</h2>
+  </div>
+  <button class="wc-feature" data-goto="soccer">
+    <span class="wc-live">● WORLD CUP 2026 · ONGOING</span>
+    <span class="wc-name">FIFA World Cup 2026</span>
+    <span class="wc-desc">Full tournament predictor — 48 teams, group stage, knockouts and player odds.</span>
+    <span class="wc-go">Open →</span>
+  </button>
+  <div class="hub-label">Top leagues</div>
+  <div class="sportgrid leaguegrid">
+    <div class="sporttile soon"><span class="tileicon">🇪🇸</span><span class="tilename">La Liga</span><span class="tilemeta">coming soon</span></div>
+    <div class="sporttile soon"><span class="tileicon">🇮🇹</span><span class="tilename">Serie A</span><span class="tilemeta">coming soon</span></div>
+    <div class="sporttile soon"><span class="tileicon">🇫🇷</span><span class="tilename">Ligue 1</span><span class="tilemeta">UberEats · soon</span></div>
+    <div class="sporttile soon"><span class="tileicon">🇩🇪</span><span class="tilename">Bundesliga</span><span class="tilemeta">coming soon</span></div>
+    <div class="sporttile soon"><span class="tileicon">🏴</span><span class="tilename">Premier League</span><span class="tilemeta">coming soon</span></div>
+    <div class="sporttile soon"><span class="tileicon">🇺🇸</span><span class="tilename">MLS</span><span class="tilemeta">coming soon</span></div>
+  </div>
+</div>
+
 <div id="app-soccer" class="sportapp">
 <div class="sporthead">
-  <button class="backbtn" data-home>← Sports</button>
+  <button class="backbtn" data-goto="soccer-hub">← Soccer</button>
   <h2>⚽ World Cup 2026</h2>
   <div class="sub" id="subtitle" style="flex:0 0 auto;font-size:11px;color:var(--mut)"></div>
   <button class="infobtn" id="infoBtn" title="How it works & sources">&#9432;</button>
@@ -265,7 +297,7 @@ header{padding-right:96px}
 
 <div id="app-nhl" class="sportapp">
 <div class="sporthead">
-  <button class="backbtn" data-home>← Sports</button>
+  <button class="backbtn" data-goto="home">← Sports</button>
   <h2>🏒 NHL</h2>
   <button class="infobtn" id="nhlInfoBtn" title="How it works & sources">&#9432;</button>
 </div>
@@ -308,14 +340,14 @@ header{padding-right:96px}
 <script src="nhl_app.js"></script>
 <script>
 (function(){
-  var home=document.getElementById('home');
-  var apps={soccer:document.getElementById('app-soccer'), nhl:document.getElementById('app-nhl')};
-  function showHome(){home.classList.add('on');for(var k in apps)apps[k].classList.remove('on');history.replaceState(null,'','#');scrollTo(0,0);}
-  function showSport(s){if(!apps[s])return showHome();home.classList.remove('on');for(var k in apps)apps[k].classList.toggle('on',k===s);history.replaceState(null,'','#'+s);scrollTo(0,0);}
-  document.querySelectorAll('.sporttile[data-sport]').forEach(function(t){t.onclick=function(){showSport(t.dataset.sport);};});
-  document.querySelectorAll('[data-home]').forEach(function(b){b.onclick=showHome;});
-  document.getElementById('goHome').onclick=showHome;
-  var h=(location.hash||'').replace('#',''); if(apps[h])showSport(h); else showHome();
+  var ids={home:'home','soccer-hub':'soccer-hub',soccer:'app-soccer',nhl:'app-nhl'};
+  function show(v){ if(!ids[v])v='home';
+    for(var k in ids){ var e=document.getElementById(ids[k]); if(e)e.classList.toggle('on',k===v); }
+    history.replaceState(null,'','#'+v); scrollTo(0,0); }
+  document.querySelectorAll('[data-goto]').forEach(function(b){ b.onclick=function(){ show(b.getAttribute('data-goto')); }; });
+  document.getElementById('goHome').onclick=function(){ show('home'); };
+  var h=(location.hash||'').replace('#',''); show(ids[h]?h:'home');
+  window.ELshow=show;
 })();
 </script>
 </body>

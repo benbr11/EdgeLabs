@@ -143,6 +143,13 @@ try:
             "opg_w": float(r["op_goals_w"]), "peng_w": float(r["pen_goals_w"])})
 except FileNotFoundError:
     pass
+# per-team appearance fraction (team-match rate -> per-appearance correction)
+APPFRAC = {}
+try:
+    for r in csv.DictReader(open(PROJ + r"\team_appfrac.csv", encoding="utf-8")):
+        APPFRAC[XG_NAME.get(r["team"], r["team"])] = float(r["app_frac"])
+except FileNotFoundError:
+    pass
 
 # (2) StatsBomb shot QUALITY (player_xg.csv) -- nudges the rate where we have shot data.
 sb_by_team = {}
@@ -167,25 +174,30 @@ try:
         pos = r["position"]; caps = int(r["caps"] or 0); goals = int(r["goals"] or 0)
         if caps < 5: continue
         val = float(r["market_value_eur"] or 0) / 1e6
-        career_op = goals/(caps+2) * 0.85                         # career open-play rate (stability prior)
+        career_op = goals/(caps+2) * 0.85                         # career open-play per-appearance (prior)
         intl = _matchlist(intl_by_team.get(team, []), r["player_name"])
         sb = _matchlist(sb_by_team.get(team, []), r["player_name"])
         sb_apps = sb["apps"] if sb else 0.0
-        # --- open-play goals/game: universal recency rate, nudged by StatsBomb shot quality,
-        #     then shrunk toward the career prior for thin samples (Bayesian-ish) ---
+        appf = APPFRAC.get(team, 0.75)                            # fraction of team matches a regular plays
+        # --- open-play goals PER APPEARANCE (matches the StatsBomb-calibrated basis) ---
+        # goalscorers rates are per TEAM-MATCH; /appf converts to per-appearance so stars on
+        # high-volume teams (CONCACAF) aren't underrated. Then nudge by shot quality.
+        sbw = min(0.40, sb_apps/30.0) if sb_apps >= 1.5 else 0.0  # trust shot-xG IN PROPORTION to sample
         if intl:
-            op_core = intl["op_rate"]
-            if sb_apps >= 1.5:
-                op_core = 0.6*intl["op_rate"] + 0.4*(sb["npxg"]/sb_apps)   # blend actual + shot xG
-            n_eff = intl["opg_w"] + intl["peng_w"] + 0.5*sb_apps           # how much real signal
-            peng = intl["pen_rate"]; pengw = intl["peng_w"]                # data-driven penalty rate
-        elif sb_apps >= 1.5:
-            op_core = 0.5*(sb["npxg"]/sb_apps) + 0.5*career_op
+            base_rate = intl["op_rate"] / appf                    # per-appearance, recency-weighted
+            op_core = (1-sbw)*base_rate + sbw*(sb["npxg"]/sb_apps) if sbw else base_rate
+            peng = intl["pen_rate"]; pengw = intl["peng_w"]       # pen rate already ~per-appearance for the taker
+            n_eff = intl["opg_w"] + intl["peng_w"] + 0.5*sb_apps
+        elif sbw:
+            op_core = sbw*(sb["npxg"]/sb_apps) + (1-sbw)*career_op
             n_eff = sb_apps; peng = (sb["pen_g"]/sb_apps); pengw = sb["pen_g"]
         else:
             op_core = career_op; n_eff = 0.0; peng = 0.0; pengw = 0.0
-        K = 3.0
-        op = (n_eff*op_core + K*career_op) / (n_eff + K)
+        # regularize by sample size: shrink toward a low generic prior so low-cap role players
+        # (a couple of goals in few caps) don't out-rank established strikers.
+        CAPS_K = 8.0; PRIOR = 0.05
+        op = (caps*op_core + CAPS_K*PRIOR) / (caps + CAPS_K)
+        peng = caps*peng / (caps + CAPS_K)                        # penalties shrink toward 0
         fk = round(sb["fk_xg"]/sb_apps, 3) if sb_apps >= 1.5 else 0.0
         # confidence 0..1: how much real data backs this player (drives the app's trust flag)
         conf = min(1.0, (intl["opg_w"]+intl["peng_w"] if intl else 0)/5.0 + min(sb_apps, 8)/16.0)
@@ -194,10 +206,16 @@ try:
         bucket.setdefault(team, []).append({"n": _clean_name(r["player_name"]), "pos": pos, "val": round(val),
             "op": round(op, 3), "peng": round(peng, 3), "fk": fk, "pen": 0, "pengw": pengw, "conf": round(conf, 2)})
     for team, lst in bucket.items():
-        # ONE designated penalty taker per team for the PK badge: most recent-weighted pen goals
+        # ONE designated penalty taker per team (most recent-weighted pen goals). ONLY the
+        # taker carries a penalty rate; everyone else's peng -> 0 so a team's pens aren't
+        # double/triple-counted across several players.
         cand = max(lst, key=lambda p: p["pengw"], default=None)
-        if cand and cand["pengw"] >= 0.8: cand["pen"] = 1
-        for p in lst: p["thr"] = round(p["op"] + p["peng"] + p["fk"], 3)
+        taker = cand if (cand and cand["pengw"] >= 1.2) else None   # require an ESTABLISHED taker
+        for p in lst:
+            p["pen"] = 1 if p is taker else 0
+            if p is not taker: p["peng"] = 0.0
+            else: p["peng"] = round(min(p["peng"], 0.16), 3)     # cap: even prolific takers ~<=0.16/game
+            p["thr"] = round(p["op"] + p["peng"] + p["fk"], 3)
         lst.sort(key=lambda p: -p["thr"])
         PLAYERS[team] = [{k: v for k, v in p.items() if k not in ("thr", "pengw")} for p in lst[:8]]
     print(f"Players: {sum(len(v) for v in PLAYERS.values())} contributors, {len(PLAYERS)} teams; "
@@ -218,8 +236,12 @@ if group_complete:
 else:
     stage_label = f"Matchday {played_max + 1}"
 
+# mean defensive multiplier: the player-odds "vs average defence" baseline must include it
+# (defence multipliers are centred well below 1, so omitting it halved every player's matchup rate).
+avgdfn = sum(R[t]["dfn_mult"] for t in R) / len(R)
 DATA = {"params": {"avg": avg, "home_adv": home_adv, "rho": RHO, "hosts": sorted(G.HOSTS),
-                   "group_complete": group_complete, "generated": generated, "stage_label": stage_label},
+                   "group_complete": group_complete, "generated": generated, "stage_label": stage_label,
+                   "avgdfn": round(avgdfn, 4)},
         "mods": MODS, "teams": R, "groups": groups_out, "fixtures": fixtures, "players": PLAYERS}
 
 with open(PROJ + r"\web\data.js", "w", encoding="utf-8") as f:

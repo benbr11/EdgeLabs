@@ -324,8 +324,8 @@ function titleOddsScreen(){
 
 /* --------------------------------- PLAYER ODDS ----------------------------- */
 function playerOdds(team, teamLambda){
-  const base = P.avg * T[team].att_mult;               // team's exp. goals vs an average defence
-  const scale = base > 0 ? teamLambda/base : 1;        // scale to this matchup (opponent defence)
+  const base = P.avg * T[team].att_mult * (P.avgdfn||1); // team's exp. goals vs an AVERAGE defence (incl. mean dfn mult)
+  const scale = base > 0 ? teamLambda/base : 1;        // scale to this matchup (opponent defence); ~1 for an average opponent
   const af = {FWD:0.55, MID:1.0, DEF:0.7};             // assist-to-goal ratio by role (estimate)
   const CAL_FLOOR = 0.045, CAL_GAMMA = 0.55;           // backtest calibration (backtest_players.py): baseline hazard + discount; beats baseline log-loss
   return (D.players[team]||[]).map(p=>{

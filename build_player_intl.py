@@ -40,12 +40,14 @@ def weight(d):
     yrs = (ref - d).days / 365.25
     return 0.5 ** (yrs / HALFLIFE_Y) if yrs >= 0 else 1.0
 
-# team recency-weighted match count (opportunities denominator), universal
+# team recency-weighted match count (opportunities denominator) + recent volume, universal
 matches_w = collections.defaultdict(float); matches_n = collections.Counter()
+recent3 = collections.Counter()                          # matches in last 3 years -> schedule volume
 for r in rrows:
-    w = weight(pdate(r["date"]))
+    d = pdate(r["date"]); w = weight(d)
     for t in (r["home_team"], r["away_team"]):
         matches_w[t] += w; matches_n[t] += 1
+        if d and (ref - d).days <= 1095: recent3[t] += 1
 
 # per (team, scorer): weighted open-play / penalty goals
 op_w = collections.defaultdict(float); pen_w = collections.defaultdict(float)
@@ -75,9 +77,19 @@ with open(PROJ + r"\player_intl.csv", "w", newline="", encoding="utf-8") as f:
                      round(mw, 1), round(op_rate, 4), round(pen_rate, 4),
                      last[k].isoformat() if last.get(k) else ""])
 
+# per-team appearance fraction: a regular plays ~APP of the team's matches. High-volume
+# schedules (CONCACAF: Gold Cup + Nations League + friendlies) -> stars sit more -> lower
+# fraction -> a bigger per-team-match -> per-appearance correction downstream.
+with open(PROJ + r"\team_appfrac.csv", "w", newline="", encoding="utf-8") as f:
+    wr = csv.writer(f); wr.writerow(["team", "matches_3y", "per_year", "app_frac"])
+    for t in sorted(matches_n):
+        mpy = recent3.get(t, 0) / 3.0
+        app = min(0.90, max(0.60, 8.5 / mpy)) if mpy > 0 else 0.75
+        wr.writerow([t, recent3.get(t, 0), round(mpy, 1), round(app, 3)])
+
 print(f"goalscorers rows: {len(grows):,}   results rows: {len(rrows):,}   ref date: {ref}")
 print(f"Wrote player_intl.csv: {sum(1 for k in (set(op_w)|set(pen_w)) if matches_w.get(k[0],0)>=1)} player-team rows, "
-      f"{len(matches_w)} teams")
+      f"{len(matches_w)} teams; team_appfrac.csv: {len(matches_n)} teams")
 # quick sanity
 for tm, nm in [("Bosnia and Herzegovina","Demirovic"),("Qatar","Afif"),("France","Mbappe"),("England","Kane")]:
     hit = [(k, op_w[k], pen_w[k], matches_w[k[0]]) for k in (set(op_w)|set(pen_w)) if k[0]==tm and nm.lower() in k[1].lower()]

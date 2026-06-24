@@ -6,9 +6,23 @@ const el = (h) => { const d = document.createElement("div"); d.innerHTML = h.tri
 /* ----------------------------- prediction math (mirrors simulate.py) ------- */
 function poisson(lam, mg){ const o=[]; let p=Math.exp(-lam); for(let k=0;k<=mg;k++){o.push(p); p*=lam/(k+1);} return o; }
 function rpois(l){ const L=Math.exp(-l); let k=0,p=1; do{k++;p*=Math.random();}while(p>L); return k-1; }
-function dcMatrix(lh, la){
+const VAR_BASE=6.0, VAR_SLOPE=0.34;   // variance-by-rating: weaker teams = more volatile
+function lgamma(x){
+  const c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,
+           -176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if(x<0.5) return Math.log(Math.PI/Math.sin(Math.PI*x))-lgamma(1-x);
+  x-=1; let a=c[0]; const t=x+7.5;
+  for(let i=1;i<9;i++) a+=c[i]/(x+i);
+  return 0.5*Math.log(2*Math.PI)+(x+0.5)*Math.log(t)-t+Math.log(a);
+}
+function nbpmf(mu, r, mg){ const o=[];   // negative-binomial; large r -> Poisson
+  for(let k=0;k<=mg;k++) o.push(Math.exp(lgamma(k+r)-lgamma(r)-lgamma(k+1)+r*Math.log(r/(r+mu))+k*Math.log(mu/(r+mu))));
+  return o;
+}
+function dcMatrix(lh, la, rh, ra){
+  rh = rh || 50; ra = ra || 50;
   const mg = Math.max(12, Math.floor(lh+la)+8);
-  const ph = poisson(lh,mg), pa = poisson(la,mg), Mx = [];
+  const ph = nbpmf(lh,rh,mg), pa = nbpmf(la,ra,mg), Mx = [];
   for(let i=0;i<=mg;i++){ const r=[]; for(let j=0;j<=mg;j++) r.push(ph[i]*pa[j]); Mx.push(r); }
   const rho = P.rho;
   Mx[0][0]*=Math.max(0,1-lh*la*rho); Mx[0][1]*=Math.max(0,1+lh*rho);
@@ -40,7 +54,8 @@ function lambdas(A,B,o){
 function predict(A,B,o){
   o=o||{};
   const [lamA,lamB]=lambdas(A,B,o);
-  const {Mx,mg}=dcMatrix(lamA,lamB), rng=[...Array(mg+1).keys()];
+  const dA=VAR_BASE+VAR_SLOPE*((T[A].att100+T[A].def100)/2), dB=VAR_BASE+VAR_SLOPE*((T[B].att100+T[B].def100)/2);
+  const {Mx,mg}=dcMatrix(lamA,lamB,dA,dB), rng=[...Array(mg+1).keys()];
   let pA=0,pD=0,pB=0,exA=0,exB=0,pH0=0,pA0=0; const flat=[];
   for(let i=0;i<=mg;i++)for(let j=0;j<=mg;j++){ const p=Mx[i][j];
     if(i>j)pA+=p; else if(j>i)pB+=p; else pD+=p; exA+=i*p; exB+=j*p;
@@ -51,7 +66,7 @@ function predict(A,B,o){
            btts:btts*100, csA:pA0*100, csB:pH0*100,
            top:flat.slice(0,3).map(([p,i,j])=>({i,j,p:p*100}))};
   if(o.knockout){
-    const et=dcMatrix(lamA/3,lamB/3); let qa=0,qb=0,qd=0;
+    const et=dcMatrix(lamA/3,lamB/3,dA,dB); let qa=0,qb=0,qd=0;
     for(let i=0;i<=et.mg;i++)for(let j=0;j<=et.mg;j++){const p=et.Mx[i][j]; if(i>j)qa+=p; else if(j>i)qb+=p; else qd+=p;}
     const share=(pA+pB)>0?pA/(pA+pB):0.5, psA=Math.min(0.55,Math.max(0.45,0.5+(share-0.5)*0.2));
     r.advA=100*(pA+pD*(qa+qd*psA)); r.advB=100*(pB+pD*(qb+qd*(1-psA)));

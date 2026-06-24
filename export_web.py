@@ -12,7 +12,7 @@ PROJ = os.path.dirname(os.path.abspath(__file__))
 RHO = -0.12
 MODS = {
     "avail_floor": 0.60, "fatigue_per_day": 0.025,
-    "stakes": {"clinched": 0.93, "eliminated": 1.0, "must-win": 1.0, "normal": 1.0},
+    "stakes": {"clinched": 0.93, "eliminated": 1.0, "must-win": 1.04, "normal": 1.0},
     "alt_pen_per_km": 0.05, "alt_buffer": 500, "heat_pen_per_c": 0.005, "heat_buffer": 8,
     "weather": {"clear": 1.0, "rain": 0.90, "cold": 0.95, "heat": 0.93},
 }

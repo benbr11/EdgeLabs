@@ -200,6 +200,35 @@ for d, h, a, hs, as_, neutral, eh, ea in recent:
 print(f"Raw home/away goal ratio (reference): {hg/ag:.3f}  ->  using HOME_ADV = {HOME_ADV}")
 home_adv = HOME_ADV
 
+# Squad market value (EUR millions, Transfermarkt 2026) -- "a team is only as strong
+# as the players on the field." A heavily-weighted talent signal; this is what puts
+# France (the most valuable squad in the world) at the top, as the eye-test expects.
+SQUAD_VALUE = {
+    "France":1520,"England":1360,"Spain":1220,"Portugal":1010,"Germany":947,
+    "Brazil":928,"Argentina":808,"Netherlands":754,"Norway":590,"Belgium":548,
+    "Ivory Coast":522,"Senegal":478,"Turkey":474,"Morocco":448,"Sweden":406,
+    "Croatia":387,"United States":386,"Ecuador":369,"Uruguay":359,"Switzerland":333,
+    "Colombia":302,"Japan":271,"Algeria":257,"Austria":245,"Ghana":235,"Canada":199,
+    "Mexico":192,"Czech Republic":188,"Scotland":170,"Paraguay":154,
+    "Bosnia and Herzegovina":146,"DR Congo":144,"South Korea":139,"Egypt":116,
+    "Uzbekistan":85,"Australia":77,"Tunisia":70,"Haiti":56,"Cape Verde":49,
+    "South Africa":49,"Saudi Arabia":41,"Panama":35,"New Zealand":34,"Iran":32,
+    "Curaçao":26,"Iraq":21,"Jordan":20,"Qatar":20,
+}
+
+# StatsBomb shot-level xG (per game), from build_statsbomb_xg.py over recent major
+# tournaments. Real chance quality -- the backbone of the TikTok-style model.
+SB_XG = {}
+SB_MAP = {"Cape Verde Islands": "Cape Verde"}
+try:
+    for r in csv.DictReader(open(PROJ + r"\statsbomb_xg.csv", encoding="utf-8")):
+        t = SB_MAP.get(r["team"], r["team"])
+        if t in TEAMS:
+            SB_XG[t] = (float(r["xgf_pg"]), float(r["xga_pg"]), int(r["games"]))
+    print(f"Loaded StatsBomb shot-xG for {len(SB_XG)}/48 teams")
+except FileNotFoundError:
+    print("statsbomb_xg.csv not found -- skipping shot-xG source")
+
 # =============================================================================
 # BLEND -> consensus strength, keep goals-based attack/defense tilt
 # =============================================================================
@@ -216,8 +245,28 @@ tilt  = {t: A_log[t] - D_log[t] for t in TEAMS}    # +ve = attack-leaning
 zg = zscores(g_str)
 ze = zscores({t: elo[t] for t in TEAMS})
 zf = zscores({t: FIFA[t] for t in TEAMS})
-W_GOALS, W_ELO, W_FIFA = 0.50, 0.25, 0.25   # goals get ~half (tuned via backtest.py)
-cons_z = {t: W_GOALS*zg[t] + W_ELO*ze[t] + W_FIFA*zf[t] for t in TEAMS}
+zv = zscores({t: math.log(SQUAD_VALUE[t]) for t in TEAMS})   # squad value, log scale
+
+# StatsBomb shot-xG strength & attack/defense tilt. Shrink small samples toward the
+# field average (K games of prior); impute the goals-model value where no SB data.
+if SB_XG:
+    K = 5.0
+    lf = sum(v[0] for v in SB_XG.values()) / len(SB_XG)
+    la = sum(v[1] for v in SB_XG.values()) / len(SB_XG)
+    sx_att = {}; sx_def = {}
+    for t, (xf, xa, g) in SB_XG.items():
+        xf = (g*xf + K*lf) / (g+K); xa = (g*xa + K*la) / (g+K)
+        sx_att[t] = math.log(xf/lf); sx_def[t] = -math.log(xa/la)
+    sb_mean = sum(sx_att[t]+sx_def[t] for t in sx_att) / len(sx_att)
+    sx_str = {t: (sx_att[t]+sx_def[t]) if t in sx_att else sb_mean for t in TEAMS}  # neutral if no data
+    zx = zscores(sx_str)
+    tilt = {t: (0.5*tilt[t] + 0.5*(sx_att[t]-sx_def[t])) if t in sx_att else tilt[t] for t in TEAMS}
+else:
+    zx = zscores(g_str)
+
+# weights: shot-xG (chance quality), goals/current form, squad value (talent), Elo, FIFA
+W_XG, W_GOALS, W_VALUE, W_ELO, W_FIFA = 0.24, 0.18, 0.26, 0.16, 0.16
+cons_z = {t: W_XG*zx[t] + W_GOALS*zg[t] + W_VALUE*zv[t] + W_ELO*ze[t] + W_FIFA*zf[t] for t in TEAMS}
 
 # put consensus strength back on the goals log-scale, then split by tilt
 gm = sum(g_str.values())/len(TEAMS)

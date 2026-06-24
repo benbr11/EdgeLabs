@@ -30,18 +30,19 @@ PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"
 # ---- tunable modifier magnitudes (all documented; edit freely) --------------
 AVAIL_FLOOR   = 0.60   # avail=1.0 -> factor 1.0 ; avail=0.5 -> 0.80
 FATIGUE_PER_DAY = 0.025  # per day of rest below 4 (rest 0 -> -10%)
-# EMPIRICAL performance multipliers from analyze_stakes.py (304 historical
-# WC/Euro final-group matches): only already-qualified teams measurably ease off
-# (~0.93x, resting starters); eliminated & must-win teams play to full strength.
-# Applied to a team's whole performance (attack AND defense). Stack with --avail
-# if heavier-than-typical rotation is known.
-STAKES_PERF = {"clinched":0.93, "eliminated":1.00, "must-win":1.00, "normal":1.00}
+# Stakes/motivation multipliers (applied to a team's whole performance, atk AND def).
+# clinched 0.93 is EMPIRICAL (analyze_stakes.py: already-qualified teams rest ~7%).
+# must-win 1.04 reflects motivation/necessity -- a team that needs the result raises
+# its level (the backtest shows this effect is small, so it's a modest, tunable bump).
+# Stack with --avail for heavier-than-typical rotation.
+STAKES_PERF = {"clinched":0.93, "eliminated":1.00, "must-win":1.04, "normal":1.00}
 ALT_PEN_PER_KM = 0.05  # performance loss per 1000 m of UNaccustomed altitude (>500 m buffer)
 ALT_BUFFER_M  = 500
 HEAT_PEN_PER_C = 0.005 # loss per deg C the venue exceeds (home_temp + buffer)
 HEAT_BUFFER_C = 8
 WEATHER_GOALS = {"clear":1.0, "rain":0.90, "cold":0.95, "heat":0.93}
 RHO = -0.12  # Dixon-Coles low-score correction (tuned via backtest.py); <0 lifts draws & 0-0/1-1
+VAR_BASE, VAR_SLOPE = 6.0, 0.34  # variance-by-rating: NegBin dispersion grows with rating (weak teams = more volatile)
 
 ALIASES = {
     "usa":"United States","us":"United States","america":"United States",
@@ -72,11 +73,17 @@ def resolve(name, teams):
     if len(hits) > 1: sys.exit(f"'{name}' is ambiguous: {hits}")
     sys.exit(f"Team '{name}' not found. Available:\n  " + ", ".join(sorted(teams)))
 
-def dc_matrix(lh, la, rho=RHO):
-    """Exact Dixon-Coles-corrected joint score distribution P(home=i, away=j)."""
+def nb_pmf(mu, r, mg):
+    """Negative-binomial goal distribution: mean mu, variance mu + mu^2/r.
+    Large r -> Poisson (consistent); smaller r -> more volatile (weaker teams)."""
+    return [math.exp(math.lgamma(k+r) - math.lgamma(r) - math.lgamma(k+1)
+                     + r*math.log(r/(r+mu)) + k*math.log(mu/(r+mu))) for k in range(mg+1)]
+
+def dc_matrix(lh, la, rh=50.0, ra=50.0, rho=RHO):
+    """Dixon-Coles-corrected joint score distribution with per-team variance
+    (rh/ra = dispersion; lower = more volatile)."""
     maxg = max(12, int(lh + la) + 8)
-    ph = [math.exp(-lh)*lh**i/math.factorial(i) for i in range(maxg+1)]
-    pa = [math.exp(-la)*la**j/math.factorial(j) for j in range(maxg+1)]
+    ph = nb_pmf(lh, rh, maxg); pa = nb_pmf(la, ra, maxg)
     M = [[ph[i]*pa[j] for j in range(maxg+1)] for i in range(maxg+1)]
     M[0][0] *= max(0.0, 1 - lh*la*rho)   # DC correction on the four low scores
     M[0][1] *= max(0.0, 1 + lh*rho)
@@ -171,7 +178,9 @@ def main():
     lamA = avg * (base_aA*amA) * (base_dB/dmB) * hfA * wfac
     lamB = avg * (base_aB*amB) * (base_dA/dmA) * hfB * wfac
 
-    M, maxg = dc_matrix(lamA, lamB)
+    dA = VAR_BASE + VAR_SLOPE*((float(R[A]["attack_100"])+float(R[A]["defense_100"]))/2)
+    dB = VAR_BASE + VAR_SLOPE*((float(R[B]["attack_100"])+float(R[B]["defense_100"]))/2)
+    M, maxg = dc_matrix(lamA, lamB, dA, dB)
     rng = range(maxg+1)
     pA = 100*sum(M[i][j] for i in rng for j in rng if i > j)
     pB = 100*sum(M[i][j] for i in rng for j in rng if j > i)
@@ -183,7 +192,7 @@ def main():
 
     if knockout:
         fA, fD, fB = pA/100.0, pD/100.0, pB/100.0
-        Met, mg2 = dc_matrix(lamA/3.0, lamB/3.0); r2 = range(mg2+1)   # extra time = 1/3 of 90'
+        Met, mg2 = dc_matrix(lamA/3.0, lamB/3.0, dA, dB); r2 = range(mg2+1)   # extra time = 1/3 of 90'
         petA = sum(Met[i][j] for i in r2 for j in r2 if i > j)
         petB = sum(Met[i][j] for i in r2 for j in r2 if j > i)
         petD = sum(Met[i][i] for i in r2)

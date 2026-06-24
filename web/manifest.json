@@ -1,10 +1,10 @@
 {
-  "name": "World Cup 2026 Predictor",
-  "short_name": "WC Predictor",
+  "name": "EdgeLab — Multi-Sport Predictions",
+  "short_name": "EdgeLab",
   "start_url": "index.html",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0a0e14",
-  "theme_color": "#0b3d2e",
-  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "background_color": "#0b1220",
+  "theme_color": "#4f8cff",
+  "icons": [{ "src": "edgelab-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }

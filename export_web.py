@@ -108,10 +108,21 @@ fixtures.sort(key=lambda x: x["date"])
 generated = max((f["date"] for f in fixtures if f["status"] == "played"), default="")
 
 # --- player model: shot-level xG + set pieces (StatsBomb) blended with squad data --
-import unicodedata
+import unicodedata, re
 def _norm(s):
     s = "".join(c for c in unicodedata.normalize("NFKD", s.lower()) if not unicodedata.combining(c))
     return set(t for t in s.replace("-", " ").split() if len(t) >= 4)
+def _clean_name(s):
+    # Some scraped squads glue/duplicate name tokens: "Neymar Neymar Jr",
+    # "MARTINELLIGabriel Gabriel". Split glued ALLCAPS-surname+FirstName, de-shout
+    # ALLCAPS tokens, and drop consecutive duplicate tokens.
+    s = re.sub(r"([A-Z]{2,})([A-Z][a-z])", r"\1 \2", s)
+    out = []
+    for tok in s.split():
+        t = tok.capitalize() if tok.isupper() else tok
+        if not out or out[-1].lower() != t.lower():
+            out.append(t)
+    return " ".join(out) or s
 SB_TEAMFIX = {"Cape Verde Islands":"Cape Verde","Congo DR":"DR Congo","Korea Republic":"South Korea",
               "Côte d'Ivoire":"Ivory Coast","Czechia":"Czech Republic","Türkiye":"Turkey","United States of America":"United States"}
 sb_by_team = {}
@@ -153,7 +164,7 @@ try:
             fk = round(sb["fk_xg"]/sb["apps"], 3)                 # direct free-kick xG/game
         else:
             op = career*0.9; pen = 0; pc = 0.75; fk = 0.0         # no shot data -> career rate
-        bucket.setdefault(team, []).append({"n": r["player_name"], "pos": pos, "val": round(val),
+        bucket.setdefault(team, []).append({"n": _clean_name(r["player_name"]), "pos": pos, "val": round(val),
             "op": round(op, 3), "pen": pen, "pc": pc, "fk": fk,
             "thr": round(op + (0.18 if pen else 0) + fk, 3)})
     for team, lst in bucket.items():

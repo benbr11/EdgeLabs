@@ -328,11 +328,13 @@ function playerOdds(team, teamLambda){
   const scale = base > 0 ? teamLambda/base : 1;        // scale to this matchup (opponent defence)
   const af = {FWD:0.55, MID:1.0, DEF:0.7};             // assist-to-goal ratio by role (estimate)
   const PEN_RATE = 0.22;                               // ~P(team wins a penalty in a match)
+  const CAL_FLOOR = 0.045, CAL_GAMMA = 0.55;           // backtest calibration (backtest_players.py): baseline hazard + discount; beats baseline log-loss
   return (D.players[team]||[]).map(p=>{
     let gx = (p.op||0)*scale + (p.fk||0)*scale;        // open-play xG + direct free kicks, defence-scaled
     if(p.pen) gx += PEN_RATE*(p.pc||0.75);             // penalty-taker bonus (set piece)
     const ax = (p.op||0)*(af[p.pos]||0.6)*scale;       // assist estimate
-    return {...p, pg:(1-Math.exp(-gx))*100, pa:(1-Math.exp(-ax))*100, pga:(1-Math.exp(-(gx+ax)))*100};
+    const gh = CAL_FLOOR + CAL_GAMMA*gx, ah = CAL_GAMMA*ax;   // calibrated hazards (cures raw over-confidence; floor only on goals)
+    return {...p, pg:(1-Math.exp(-gh))*100, pa:(1-Math.exp(-ah))*100, pga:(1-Math.exp(-(gh+ah)))*100};
   }).filter(x=>x.pga>=8).sort((a,b)=>b.pga-a.pga).slice(0,6);
 }
 function playersScreen(){

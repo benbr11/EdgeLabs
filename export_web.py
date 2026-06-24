@@ -158,7 +158,8 @@ try:
         tm = SB_TEAMFIX.get(r["team"], r["team"]); tm = XG_NAME.get(tm, tm)
         if float(r["apps"]) < 0.5: continue
         sb_by_team.setdefault(tm, []).append({"tok": _norm(r["player"]), "apps": float(r["apps"]),
-            "npxg": float(r["npxg"]), "pen_sh": float(r["pen_sh"]), "pen_g": float(r["pen_g"]), "fk_xg": float(r["fk_xg"])})
+            "npxg": float(r["npxg"]), "pen_sh": float(r["pen_sh"]), "pen_g": float(r["pen_g"]), "fk_xg": float(r["fk_xg"]),
+            "assists": float(r.get("assists") or 0), "xa": float(r.get("xa") or 0)})
 except FileNotFoundError:
     pass
 
@@ -199,12 +200,21 @@ try:
         op = (caps*op_core + CAPS_K*PRIOR) / (caps + CAPS_K)
         peng = caps*peng / (caps + CAPS_K)                        # penalties shrink toward 0
         fk = round(sb["fk_xg"]/sb_apps, 3) if sb_apps >= 1.5 else 0.0
+        # REAL assist rate per appearance (StatsBomb goal-assists + xA) where we have it,
+        # shrunk toward the role-based estimate for small samples; else None -> app.js estimates.
+        ar = None
+        if sb_apps >= 1.5:
+            ar_real = 0.45*(sb["assists"]/sb_apps) + 0.55*(sb["xa"]/sb_apps)
+            af_est = {"FWD": 0.55, "MID": 1.0, "DEF": 0.7}.get(pos, 0.6)
+            ar = round((sb_apps*ar_real + 3.0*op*af_est) / (sb_apps + 3.0), 3)
         # confidence 0..1: how much real data backs this player (drives the app's trust flag)
         conf = min(1.0, (intl["opg_w"]+intl["peng_w"] if intl else 0)/5.0 + min(sb_apps, 8)/16.0)
         if not intl and sb_apps < 1.5: conf = min(conf, 0.15)
         if op < 0.02 and pengw < 0.3: continue                   # not a goal threat
-        bucket.setdefault(team, []).append({"n": _clean_name(r["player_name"]), "pos": pos, "val": round(val),
-            "op": round(op, 3), "peng": round(peng, 3), "fk": fk, "pen": 0, "pengw": pengw, "conf": round(conf, 2)})
+        rec = {"n": _clean_name(r["player_name"]), "pos": pos, "val": round(val),
+               "op": round(op, 3), "peng": round(peng, 3), "fk": fk, "pen": 0, "pengw": pengw, "conf": round(conf, 2)}
+        if ar is not None: rec["ar"] = ar                        # real assist rate
+        bucket.setdefault(team, []).append(rec)
     for team, lst in bucket.items():
         # ONE designated penalty taker per team (most recent-weighted pen goals). ONLY the
         # taker carries a penalty rate; everyone else's peng -> 0 so a team's pens aren't

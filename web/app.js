@@ -332,7 +332,7 @@ function playerOdds(team, teamLambda){
     // open-play + direct free kicks scale with the matchup defence; penalties (p.peng,
     // each player's real recency-weighted penalty-goal rate) do NOT — a pen is a pen.
     let gx = (p.op||0)*scale + (p.fk||0)*scale + (p.peng||0);
-    const ax = (p.op||0)*(af[p.pos]||0.6)*scale;       // assist estimate
+    const ax = (p.ar!=null ? p.ar : (p.op||0)*(af[p.pos]||0.6)) * scale;  // REAL assist rate (StatsBomb) where available, else role estimate
     const gh = CAL_FLOOR + CAL_GAMMA*gx, ah = CAL_GAMMA*ax;   // calibrated hazards (cures raw over-confidence; floor only on goals)
     return {...p, pg:(1-Math.exp(-gh))*100, pa:(1-Math.exp(-ah))*100, pga:(1-Math.exp(-(gh+ah)))*100};
   }).filter(x=>x.pga>=8).sort((a,b)=>b.pga-a.pga).slice(0,6);
@@ -340,7 +340,7 @@ function playerOdds(team, teamLambda){
 function playersScreen(){
   const sec=document.getElementById("players"); sec.innerHTML="";
   sec.appendChild(el(`<div class="card"><h3>Player odds — ${P.stage_label}</h3>
-    <div class="mini">Anytime <b>goal</b> / <b>assist</b> / <b>goal-or-assist</b> chances for the main contributors. Built from each player's <b>recency-weighted real international scoring rate</b> (every team, via 47k+ logged goals) refined by <b>StatsBomb shot quality</b> where available, scaled to the matchup defence, and calibrated against history. A <span class="ppos low">low data</span> tag means we have little real data on that player — treat any gap vs the bookmaker as our blind spot, not an edge. Assists are modelled estimates (no public assist feed).</div></div>`));
+    <div class="mini">Anytime <b>goal</b> / <b>assist</b> / <b>goal-or-assist</b> chances for the main contributors. Built from each player's <b>recency-weighted real international scoring rate</b> (every team, via 47k+ logged goals) refined by <b>StatsBomb shot quality</b> where available, scaled to the matchup defence, and calibrated against history. A <span class="ppos low">low data</span> tag means we have little real data on that player — treat any gap vs the bookmaker as our blind spot, not an edge. Assists now use <b>real StatsBomb assist + expected-assist data</b> where we have it (a role-based estimate otherwise).</div></div>`));
   const up=D.fixtures.filter(f=>f.status==="scheduled"&&T[f.home]&&T[f.away]);
   if(!up.length){ sec.appendChild(el(`<div class="card"><div class="note">No upcoming fixtures right now.</div></div>`)); return; }
   const rows=(team,lam)=>{ const ps=playerOdds(team,lam);

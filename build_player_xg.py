@@ -22,6 +22,7 @@ apps=collections.defaultdict(float); team_of={}
 npxg=collections.defaultdict(float); goals=collections.defaultdict(float); shots=collections.defaultdict(float)
 pen_sh=collections.defaultdict(float); pen_g=collections.defaultdict(float)
 fk_sh=collections.defaultdict(float); fk_xg=collections.defaultdict(float); fk_g=collections.defaultdict(float)
+assists=collections.defaultdict(float); xa=collections.defaultdict(float); keyp=collections.defaultdict(float)  # REAL assists + expected assists
 
 for comp, season, label, w in COMPS:
     try:
@@ -34,9 +35,11 @@ for comp, season, label, w in COMPS:
             events = fetch(f"{BASE}/events/{m['match_id']}.json")
         except Exception:
             continue
-        seen = set()
+        seen = set(); id2pl = {}
         for ev in events:
             et = ev.get("type", {}).get("name"); tm = ev.get("team", {}).get("name")
+            pid = ev.get("id"); _pl = ev.get("player", {}).get("name")
+            if pid and _pl: id2pl[pid] = (_pl, tm)               # map event id -> passer (for assist credit)
             if et == "Starting XI":
                 for pl in ev.get("tactics", {}).get("lineup", []):
                     nm = pl.get("player", {}).get("name")
@@ -57,6 +60,10 @@ for comp, season, label, w in COMPS:
                     if goal: pen_g[key] += w
                 else:
                     npxg[key] += w * sxg
+                    kp = sh.get("key_pass_id")                   # the pass that created this shot -> credit assister
+                    if kp and kp in id2pl:
+                        ak = id2pl[kp]; keyp[ak] += w; xa[ak] += w * sxg
+                        if goal: assists[ak] += w
                     if stype == "Free Kick":
                         fk_sh[key] += w; fk_xg[key] += w * sxg
                         if goal: fk_g[key] += w
@@ -66,10 +73,11 @@ for comp, season, label, w in COMPS:
 
 with open(PROJ + r"\player_xg.csv", "w", newline="", encoding="utf-8") as f:
     wr = csv.writer(f)
-    wr.writerow(["player","team","apps","npxg","goals","shots","pen_sh","pen_g","fk_sh","fk_xg","fk_g"])
+    wr.writerow(["player","team","apps","npxg","goals","shots","pen_sh","pen_g","fk_sh","fk_xg","fk_g","assists","xa","key_passes"])
     for key in sorted(apps, key=lambda k: -npxg[k]):
         if apps[key] < 0.5: continue
         nm, tm = key
         wr.writerow([nm, tm, round(apps[key],2), round(npxg[key],2), round(goals[key],2), round(shots[key],1),
-                     round(pen_sh[key],2), round(pen_g[key],2), round(fk_sh[key],2), round(fk_xg[key],3), round(fk_g[key],2)])
+                     round(pen_sh[key],2), round(pen_g[key],2), round(fk_sh[key],2), round(fk_xg[key],3), round(fk_g[key],2),
+                     round(assists[key],2), round(xa[key],3), round(keyp[key],1)])
 print(f"\nWrote player_xg.csv: {len(apps)} players", flush=True)

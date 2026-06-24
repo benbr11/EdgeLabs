@@ -132,6 +132,7 @@ for d, h, a, hs, as_, neutral in rows:
 # =============================================================================
 CUTOFF = datetime.date(2015, 1, 1)
 HALFLIFE_DAYS = 730.0           # 2-year half-life recency weighting (tuned via backtest.py)
+WC_BOOST = 1.5                  # current World Cup games weighted extra (most current) but not so much an outlier distorts
 def weight(d):
     age = (MAXDATE - d).days
     return 0.5 ** (age / HALFLIFE_DAYS)
@@ -142,19 +143,21 @@ recent = []
 xg_used = 0
 for (d, h, a, hs, as_, neutral) in (m for m in rows if m[0] >= CUTOFF):
     key = (d.isoformat(), frozenset((h, a)))
-    if key in m_xg and h in m_xg[key] and a in m_xg[key]:
+    is_wc = key in m_xg and h in m_xg[key] and a in m_xg[key]   # a current-WC match (has xG)
+    if is_wc:
         eh = W_XG * m_xg[key][h] + (1 - W_XG) * hs
         ea = W_XG * m_xg[key][a] + (1 - W_XG) * as_
         xg_used += 1
     else:
         eh, ea = float(hs), float(as_)
-    recent.append((d, h, a, hs, as_, neutral, eh, ea))
-print(f"xG-blended {xg_used} recent matches (weight {W_XG})")
+    wb = WC_BOOST if is_wc else 1.0
+    recent.append((d, h, a, hs, as_, neutral, eh, ea, wb))
+print(f"xG-blended {xg_used} current-WC matches (xG weight {W_XG}, WC weight boost x{WC_BOOST})")
 
 # weighted league average goals per team per match
 tot_g = tot_w = 0.0
-for d, h, a, hs, as_, neutral, eh, ea in recent:
-    w = weight(d); tot_g += w * (eh + ea); tot_w += w * 2
+for d, h, a, hs, as_, neutral, eh, ea, wb in recent:
+    w = weight(d) * wb; tot_g += w * (eh + ea); tot_w += w * 2
 AVG = tot_g / tot_w
 print(f"Weighted avg goals/team/match since {CUTOFF}: {AVG:.3f}")
 
@@ -164,15 +167,15 @@ print(f"Weighted avg goals/team/match since {CUTOFF}: {AVG:.3f}")
 # confounding that collapses a joint fit. Home advantage is then measured
 # separately below, controlled for team strength.
 att = {}; dfn = {}                         # multiplicative; 1.0 = average
-for d, h, a, hs, as_, neutral, eh, ea in recent:
+for d, h, a, hs, as_, neutral, eh, ea, wb in recent:
     for t in (h, a):
         att.setdefault(t, 1.0); dfn.setdefault(t, 1.0)
 
 for iteration in range(60):
     na = {t: 0.0 for t in att}; da = {t: 0.0 for t in att}
     nd = {t: 0.0 for t in att}; dd = {t: 0.0 for t in att}
-    for d, h, a, hs, as_, neutral, eh, ea in recent:
-        w = weight(d)
+    for d, h, a, hs, as_, neutral, eh, ea, wb in recent:
+        w = weight(d) * wb
         na[h] += w * eh;  da[h] += w * AVG * dfn[a]
         nd[a] += w * eh;  dd[a] += w * AVG * att[h]
         na[a] += w * ea;  da[a] += w * AVG * dfn[h]
@@ -194,7 +197,7 @@ for iteration in range(60):
 # strong teams host weak ones in qualifiers -- so we do not use it directly).
 HOME_ADV = 1.30
 hg = ag = 0.0
-for d, h, a, hs, as_, neutral, eh, ea in recent:
+for d, h, a, hs, as_, neutral, eh, ea, wb in recent:
     if neutral: continue
     w = weight(d); hg += w * hs; ag += w * as_
 print(f"Raw home/away goal ratio (reference): {hg/ag:.3f}  ->  using HOME_ADV = {HOME_ADV}")
@@ -265,8 +268,8 @@ else:
     zx = zscores(g_str)
 
 # weights: shot-xG (chance quality), goals/current form, squad value (talent), Elo, FIFA
-W_XG, W_GOALS, W_VALUE, W_ELO, W_FIFA = 0.24, 0.18, 0.26, 0.16, 0.16
-cons_z = {t: W_XG*zx[t] + W_GOALS*zg[t] + W_VALUE*zv[t] + W_ELO*ze[t] + W_FIFA*zf[t] for t in TEAMS}
+W_SBXG, W_GOALS, W_VALUE, W_ELO, W_FIFA = 0.20, 0.22, 0.26, 0.16, 0.16   # current form (goals incl. WC) now > historical xG
+cons_z = {t: W_SBXG*zx[t] + W_GOALS*zg[t] + W_VALUE*zv[t] + W_ELO*ze[t] + W_FIFA*zf[t] for t in TEAMS}
 
 # put consensus strength back on the goals log-scale, then split by tilt
 gm = sum(g_str.values())/len(TEAMS)
@@ -293,7 +296,7 @@ with open(PROJ + r"\ratings.csv", "w", newline="", encoding="utf-8") as f:
                 "elo","fifa_points","fifa_estimated","matches_since_2015",
                 "league_avg_goals","home_adv_mult"])
     mcount = {t:0 for t in TEAMS}
-    for d,h,a,hs,as_,n,eh,ea in recent:
+    for d,h,a,hs,as_,n,eh,ea,wb in recent:
         if h in mcount: mcount[h]+=1
         if a in mcount: mcount[a]+=1
     for t in out:

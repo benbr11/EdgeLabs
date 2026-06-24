@@ -108,11 +108,19 @@ function groupAdvanceOdds(){
 function predictScreen(){
   const sec=document.getElementById("predict"); sec.innerHTML="";
   const opts=TEAMS.map(t=>`<option>${t}</option>`).join("");
+  const fixtures=D.fixtures.filter(f=>f.status==="scheduled"&&T[f.home]&&T[f.away]);  // upcoming, in order
+  let idx=fixtures.length?0:-1;
   const card=el(`<div class="card">
+    <div class="navrow">
+      <button class="navbtn" id="prevM">◀ Prev</button>
+      <div class="mlabel" id="mLabel"></div>
+      <button class="navbtn" id="nextM">Next ▶</button>
+    </div>
     <div class="row"><div style="flex:1"><label>Team A</label><select id="selA">${opts}</select></div>
       <div class="vs">vs</div>
       <div style="flex:1"><label>Team B</label><select id="selB">${opts}</select></div></div>
     <div class="note" id="stageNote"></div>
+    <div id="out"></div>
     <details><summary>Match-day factors (optional — auto by default)</summary>
       <div class="grid2">
         <div><label>Knockout tie?</label><select id="ko"><option value="auto">Auto-detect</option><option value="yes">Yes (ET + pens)</option><option value="no">No (90 min)</option></select></div>
@@ -131,35 +139,57 @@ function predictScreen(){
         <div><label>Odds B</label><input type="number" step="0.01" id="oB" placeholder="3.50"></div>
       </div>
       <div class="mini" style="margin-top:6px">Model is independent of the odds — it only flags where it sees value.</div>
+      <button class="btn" id="go" style="margin-top:10px">Update with these factors</button>
     </details>
-    <button class="btn" id="go">Predict</button>
-    <div id="out"></div>
   </div>`);
   sec.appendChild(card);
   const $=(id)=>card.querySelector(id);
-  $("#selA").selectedIndex=Math.max(0,TEAMS.indexOf("Argentina")); $("#selB").selectedIndex=Math.max(0,TEAMS.indexOf("Brazil"));
   $("#avA").oninput=()=>$("#avAl").textContent=$("#avA").value+"%";
   $("#avB").oninput=()=>$("#avBl").textContent=$("#avB").value+"%";
-  const refreshStage=()=>{
+  function refreshStage(){
     const A=$("#selA").value,B=$("#selB").value;
     if(A===B){$("#stageNote").innerHTML="Pick two different teams.";return;}
     const st=stageOf(A,B);
     $("#stageNote").innerHTML = st==="group" ? `Group stage · ${A} ${stakeTag(T[A].stakes)} &nbsp; ${B} ${stakeTag(T[B].stakes)}`
       : st==="knockout" ? `<span class="tag ko">Knockout</span> extra time + penalties → who advances`
       : `Stage <b>unknown</b> (knockout bracket not set yet) — set "Knockout tie?" if this is a KO.`;
-  };
-  $("#selA").onchange=refreshStage; $("#selB").onchange=refreshStage; refreshStage();
-  $("#go").onclick=()=>{
-    const A=$("#selA").value,B=$("#selB").value; if(A===B){$("#out").innerHTML='<div class="note">Pick two different teams.</div>';return;}
+  }
+  function runPredict(){
+    const A=$("#selA").value,B=$("#selB").value;
+    if(A===B){$("#out").innerHTML='<div class="note">Pick two different teams.</div>';return;}
     const st=stageOf(A,B);
-    const ko = $("#ko").value==="auto" ? st==="knockout" : $("#ko").value==="yes";
+    const ko=$("#ko").value==="auto"?st==="knockout":$("#ko").value==="yes";
     let host=null; const vsel=$("#venue").value;
-    if(vsel==="auto") host=hostOf(A,B); else if(vsel==="A")host=A; else if(vsel==="B")host=B;
-    const o={knockout:ko, host:host, availA:+$("#avA").value/100, availB:+$("#avB").value/100,
-      restA:+$("#rA").value, restB:+$("#rB").value, weather:$("#wx").value, vTemp:$("#vt").value!==""?+$("#vt").value:null};
-    if(!ko && st==="group"){ o.stakesA=T[A].stakes; o.stakesB=T[B].stakes; }
-    $("#out").innerHTML=renderResult(predict(A,B,o), ko, [+$("#oA").value,+$("#oD").value,+$("#oB").value]);
-  };
+    if(vsel==="auto")host=hostOf(A,B); else if(vsel==="A")host=A; else if(vsel==="B")host=B;
+    const o={knockout:ko,host:host,availA:+$("#avA").value/100,availB:+$("#avB").value/100,
+      restA:+$("#rA").value,restB:+$("#rB").value,weather:$("#wx").value,vTemp:$("#vt").value!==""?+$("#vt").value:null};
+    if(!ko&&st==="group"){o.stakesA=T[A].stakes;o.stakesB=T[B].stakes;}
+    $("#out").innerHTML=renderResult(predict(A,B,o),ko,[+$("#oA").value,+$("#oD").value,+$("#oB").value]);
+  }
+  function syncNav(){
+    $("#prevM").disabled = idx<=0;
+    $("#nextM").disabled = idx<0 || idx>=fixtures.length-1;
+    $("#mLabel").textContent = idx>=0 ? `${fixtures[idx].date} · match ${idx+1} of ${fixtures.length}` : "Custom matchup";
+  }
+  function resetFactors(){
+    $("#ko").value="auto"; $("#venue").value="auto"; $("#wx").value="clear";
+    $("#avA").value=100; $("#avB").value=100; $("#avAl").textContent="100%"; $("#avBl").textContent="100%";
+    $("#rA").value=4; $("#rB").value=4; $("#vt").value=""; $("#oA").value=""; $("#oD").value=""; $("#oB").value="";
+  }
+  function loadFixture(i){
+    if(i<0||i>=fixtures.length) return;
+    idx=i; resetFactors(); $("#selA").value=fixtures[i].home; $("#selB").value=fixtures[i].away;
+    syncNav(); refreshStage(); runPredict();
+  }
+  $("#prevM").onclick=()=>loadFixture(idx-1);
+  $("#nextM").onclick=()=>loadFixture(idx+1);
+  $("#selA").onchange=()=>{idx=-1;syncNav();refreshStage();runPredict();};
+  $("#selB").onchange=()=>{idx=-1;syncNav();refreshStage();runPredict();};
+  $("#go").onclick=runPredict;
+  window.predictMatchup=(A,B)=>{ resetFactors(); $("#selA").value=A; $("#selB").value=B; idx=-1; syncNav(); refreshStage(); runPredict(); };
+  if(idx>=0){ loadFixture(0); }                       // auto-open the next fixture
+  else { $("#prevM").style.display="none"; $("#nextM").style.display="none"; $("#mLabel").textContent="Pick any two teams";
+         $("#selA").value="Argentina"; $("#selB").value="Brazil"; refreshStage(); runPredict(); }
 }
 function renderResult(r,ko,odds){
   const {A,B}=r; let h="";
@@ -243,7 +273,9 @@ function slateScreen(){
     const r=predict(A,B,o);
     const summary = ko ? `<span class="win">${r.advA>=r.advB?A:B}</span> ${Math.max(r.advA,r.advB).toFixed(0)}% adv`
       : `${A} ${r.pA.toFixed(0)} / D ${r.pD.toFixed(0)} / ${B} ${r.pB.toFixed(0)}`;
-    list.appendChild(el(`<div class="slate-item"><div>${A} <span class="pill">v</span> ${B}${ko?' <span class="tag ko">KO</span>':''}</div><div class="pill">${summary}</div></div>`));
+    const item=el(`<div class="slate-item" style="cursor:pointer"><div>${A} <span class="pill">v</span> ${B}${ko?' <span class="tag ko">KO</span>':''}</div><div class="pill">${summary} ›</div></div>`);
+    item.onclick=()=>{ if(window.predictMatchup){ window.predictMatchup(A,B); document.querySelector('nav button[data-tab="predict"]').click(); window.scrollTo(0,0); } };
+    list.appendChild(item);
   });
 }
 

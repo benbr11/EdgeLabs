@@ -235,12 +235,11 @@ header{padding-right:96px}
   </button>
   <div class="hub-label">Top leagues</div>
   <div class="sportgrid leaguegrid">
-    <div class="sporttile soon"><span class="tileicon">🇪🇸</span><span class="tilename">La Liga</span><span class="tilemeta">coming soon</span></div>
-    <div class="sporttile soon"><span class="tileicon">🇮🇹</span><span class="tilename">Serie A</span><span class="tilemeta">coming soon</span></div>
-    <div class="sporttile soon"><span class="tileicon">🇫🇷</span><span class="tilename">Ligue 1</span><span class="tilemeta">UberEats · soon</span></div>
-    <div class="sporttile soon"><span class="tileicon">🇩🇪</span><span class="tilename">Bundesliga</span><span class="tilemeta">coming soon</span></div>
-    <div class="sporttile soon"><span class="tileicon">🏴</span><span class="tilename">Premier League</span><span class="tilemeta">coming soon</span></div>
-    <div class="sporttile soon"><span class="tileicon">🇺🇸</span><span class="tilename">MLS</span><span class="tilemeta">coming soon</span></div>
+    <button class="sporttile" data-league="epl"><span class="tileicon">🏴</span><span class="tilename">Premier League</span><span class="tilemeta">England</span></button>
+    <button class="sporttile" data-league="laliga"><span class="tileicon">🇪🇸</span><span class="tilename">La Liga</span><span class="tilemeta">Spain</span></button>
+    <button class="sporttile" data-league="seriea"><span class="tileicon">🇮🇹</span><span class="tilename">Serie A</span><span class="tilemeta">Italy</span></button>
+    <button class="sporttile" data-league="bundesliga"><span class="tileicon">🇩🇪</span><span class="tilename">Bundesliga</span><span class="tilemeta">Germany</span></button>
+    <button class="sporttile" data-league="ligue1"><span class="tileicon">🇫🇷</span><span class="tilename">Ligue 1</span><span class="tilemeta">France · UberEats</span></button>
   </div>
 </div>
 
@@ -334,17 +333,44 @@ header{padding-right:96px}
 <div class="foot" id="nhlfoot"></div>
 </div><!-- /app-nhl -->
 
+<div id="app-league" class="sportapp">
+<div class="sporthead">
+  <button class="backbtn" data-goto="soccer-hub">← Soccer</button>
+  <h2 id="lgTitle">League</h2>
+  <button class="infobtn" id="lgInfoBtn" title="How it works">&#9432;</button>
+</div>
+<div class="modal" id="lgInfoModal"><div class="modal-card"><button class="modal-close">✕ Close</button>
+  <h2>How the league model works</h2>
+  <p>Each club gets an <b>attack</b> and <b>defense</b> rating from recent results, then a <b>Poisson + Dixon-Coles</b> model turns a matchup into win/draw odds, expected goals, both-teams-to-score, clean sheets and likely scorelines — the same engine as the World Cup model.</p>
+  <ul><li>⚽ <b>Results</b> — last 3 seasons (football-data.co.uk), weighted toward recent games.</li>
+  <li>📊 <b>Elo</b> stabiliser + goal-level calibration so totals stay realistic.</li>
+  <li>🔄 <b>Self-updating</b> — re-pulls weekly and auto-rolls to each new season.</li></ul>
+  <p class="src-note">Independent of betting markets — built to find edges, not match the book.</p></div></div>
+<nav class="nhlnav" id="lgNav">
+  <button data-ltab="lgPredict" class="on">Predict</button>
+  <button data-ltab="lgRatings">Power ratings</button>
+</nav>
+<main>
+  <div id="lgPredict" class="nsec on"></div>
+  <div id="lgRatings" class="nsec"></div>
+</main>
+<div class="foot" id="lgFoot"></div>
+</div><!-- /app-league -->
+
 <script src="data.js"></script>
 <script src="nhl_data.js"></script>
+<script src="leagues_data.js"></script>
 <script src="app.js"></script>
 <script src="nhl_app.js"></script>
+<script src="leagues_app.js"></script>
 <script>
 (function(){
-  var ids={home:'home','soccer-hub':'soccer-hub',soccer:'app-soccer',nhl:'app-nhl'};
+  var ids={home:'home','soccer-hub':'soccer-hub',soccer:'app-soccer',nhl:'app-nhl',league:'app-league'};
   function show(v){ if(!ids[v])v='home';
     for(var k in ids){ var e=document.getElementById(ids[k]); if(e)e.classList.toggle('on',k===v); }
     history.replaceState(null,'','#'+v); scrollTo(0,0); }
   document.querySelectorAll('[data-goto]').forEach(function(b){ b.onclick=function(){ show(b.getAttribute('data-goto')); }; });
+  document.querySelectorAll('[data-league]').forEach(function(t){ t.onclick=function(){ window.openLeague&&window.openLeague(t.getAttribute('data-league')); }; });
   document.getElementById('goHome').onclick=function(){ show('home'); };
   var h=(location.hash||'').replace('#',''); show(ids[h]?h:'home');
   window.ELshow=show;

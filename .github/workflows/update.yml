@@ -40,6 +40,10 @@ jobs:
           python build_nhl_xg.py
           python build_nhl.py
           python nhl_export.py
+      - name: Build club leagues (EPL/La Liga/Serie A/Bundesliga/Ligue 1; self-updating)
+        continue-on-error: true
+        run: |
+          python build_leagues.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

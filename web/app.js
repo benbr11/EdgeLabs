@@ -374,14 +374,14 @@ document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") infoModal.classL
 const groupsComplete=P.group_complete;
 document.getElementById("tab2").textContent = groupsComplete ? "Bracket" : "Groups";
 function show(tab){
-  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
-  document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id===tab));
+  document.querySelectorAll("#app-soccer nav button").forEach(b=>b.classList.toggle("on",b.dataset.tab===tab));
+  document.querySelectorAll("#app-soccer section").forEach(s=>s.classList.toggle("on",s.id===tab));
   if(tab==="groups"&&!document.getElementById("groups").innerHTML){ groupsComplete?koBracketScreen():groupsScreen(); }
   if(tab==="slate"&&!document.getElementById("slate").innerHTML) slateScreen();
   if(tab==="bracket"&&!document.getElementById("bracket").innerHTML) titleOddsScreen();
   if(tab==="players"&&!document.getElementById("players").innerHTML) playersScreen();
 }
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.tab));
+document.querySelectorAll("#app-soccer nav button").forEach(b=>b.onclick=()=>show(b.dataset.tab));
 document.getElementById("subtitle").textContent=`48 teams · Dixon-Coles + xG model · data through ${P.generated}`;
 document.getElementById("foot").innerHTML=`Model: 3-source ratings (goals+Elo+FIFA), xG-adjusted, Dixon-Coles, backtested.<br>Data through ${P.generated}. Updates automatically twice daily.`;
 predictScreen();

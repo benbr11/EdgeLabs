@@ -138,15 +138,98 @@ header{padding-right:96px}
 .ppos.pk{color:var(--accent2);border-color:var(--accent2);font-weight:700}
 .ppos.low{color:#b9770e;border-color:#e6a23c}
 .prow.lowconf{opacity:.55}
+/* ---------- multi-sport shell ---------- */
+.shell-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:20}
+.brand{display:flex;align-items:center;gap:10px;cursor:pointer;border:none;background:none;color:inherit}
+.brandlogo{width:34px;height:34px;flex:0 0 auto}
+.brandtxt{display:flex;flex-direction:column;line-height:1.05;text-align:left}
+.brandname{font-weight:800;font-size:19px;letter-spacing:.3px}
+.brandtag{font-size:10.5px;color:var(--mut);letter-spacing:.4px;text-transform:uppercase}
+.home{max-width:760px;margin:0 auto;padding:30px 16px 60px;display:none}
+.home.on{display:block}
+.home-hero{text-align:center;margin:18px 0 30px}
+.herologo{width:84px;height:84px;filter:drop-shadow(0 6px 18px rgba(79,140,255,.35))}
+.home-hero h1{margin:14px 0 6px;font-size:34px;font-weight:800;letter-spacing:.5px}
+.home-sub{color:var(--mut);font-size:15px;max-width:440px;margin:0 auto}
+.sportgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:8px}
+@media(max-width:560px){.sportgrid{grid-template-columns:repeat(2,1fr)}}
+.sporttile{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 12px;border:1px solid var(--line);border-radius:18px;background:var(--card);cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s;color:inherit}
+.sporttile:hover{transform:translateY(-3px);box-shadow:0 10px 26px rgba(0,0,0,.18);border-color:var(--accent)}
+.sporttile .tileicon{width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-size:42px}
+.sporttile .tileicon svg,.sporttile .tileicon img{width:56px;height:56px}
+.tilename{font-weight:700;font-size:17px}
+.tilemeta{font-size:11px;color:var(--mut)}
+.sporttile.soon{cursor:default;opacity:.45}
+.sporttile.soon:hover{transform:none;box-shadow:none;border-color:var(--line)}
+.sporttile.soon .tilemeta{color:var(--accent2)}
+.sportapp{display:none}
+.sportapp.on{display:block}
+.sporthead{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.sporthead h2{margin:0;font-size:18px;flex:1}
+.backbtn{border:1px solid var(--line);background:var(--card);color:inherit;border-radius:9px;padding:6px 11px;cursor:pointer;font-size:13px}
+.backbtn:hover{border-color:var(--accent)}
+.nhlnav{display:flex;gap:6px;padding:10px 16px 0;flex-wrap:wrap}
+.nhlnav button{border:1px solid var(--line);background:var(--card);color:inherit;border-radius:9px 9px 0 0;padding:8px 14px;cursor:pointer;font-size:13.5px;font-weight:600}
+.nhlnav button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.nsec{display:none;padding:14px 16px}
+.nsec.on{display:block}
+.nhl-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.nhl-row .rk{width:22px;color:var(--mut)}.nhl-row .tm{flex:1;font-weight:600}.nhl-row .st{width:54px;text-align:right}
+.nhlform{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px}
+.nhlform label{font-size:11px;color:var(--mut);display:block;margin-bottom:3px}
+.nhlform select,.nhlform input{background:var(--card);color:inherit;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13px;max-width:230px}
+.tdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+#app-nhl .flag{height:18px;width:auto;vertical-align:middle;margin-right:2px}
 </style>
 </head>
 <body>
-<header>
-  <h1><img src="icon.svg" alt="" class="applogo">World Cup 2026 Predictor</h1>
-  <div class="sub" id="subtitle">loading…</div>
-  <button class="infobtn" id="infoBtn" title="How it works & sources">&#9432;</button>
+<header class="shell-head">
+  <button class="brand" id="goHome" title="Home">
+    <svg class="brandlogo" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="elg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#8a5cff"/></linearGradient></defs>
+      <rect x="3" y="3" width="42" height="42" rx="12" fill="url(#elg)"/>
+      <polyline points="11,33 20,25 27,29 36,15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M29.5 15 H36 V21.5" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span class="brandtxt"><span class="brandname">EdgeLab</span><span class="brandtag">multi-sport predictions</span></span>
+  </button>
   <button class="themetoggle" id="themeBtn" title="Toggle light/dark">🌙</button>
 </header>
+
+<div id="home" class="home on">
+  <div class="home-hero">
+    <svg class="herologo" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="elg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#8a5cff"/></linearGradient></defs>
+      <rect x="3" y="3" width="42" height="42" rx="13" fill="url(#elg2)"/>
+      <polyline points="11,33 20,25 27,29 36,15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M29.5 15 H36 V21.5" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h1>EdgeLab</h1>
+    <p class="home-sub">Independent data models that simulate games and surface the edge. Pick a sport to start.</p>
+  </div>
+  <div class="sportgrid">
+    <button class="sporttile" data-sport="nhl">
+      <span class="tileicon"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M13 9 L31 33 L41 33"/><path d="M35 9 L17 33 L7 33"/></g><ellipse cx="24" cy="40" rx="8" ry="3.2" fill="currentColor"/></svg></span>
+      <span class="tilename">NHL</span><span class="tilemeta">Hockey · live model</span>
+    </button>
+    <button class="sporttile" data-sport="soccer">
+      <span class="tileicon"><img src="icon.svg" alt="Soccer"></span>
+      <span class="tilename">Soccer</span><span class="tilemeta">World Cup 2026</span>
+    </button>
+    <div class="sporttile soon"><span class="tileicon">🏈</span><span class="tilename">NFL</span><span class="tilemeta">coming soon</span></div>
+    <div class="sporttile soon"><span class="tileicon">🏀</span><span class="tilename">NBA</span><span class="tilemeta">coming soon</span></div>
+    <div class="sporttile soon"><span class="tileicon">⚾</span><span class="tilename">MLB</span><span class="tilemeta">coming soon</span></div>
+    <div class="sporttile soon"><span class="tileicon">🥊</span><span class="tilename">UFC</span><span class="tilemeta">coming soon</span></div>
+  </div>
+</div>
+
+<div id="app-soccer" class="sportapp">
+<div class="sporthead">
+  <button class="backbtn" data-home>← Sports</button>
+  <h2>⚽ World Cup 2026</h2>
+  <div class="sub" id="subtitle" style="flex:0 0 auto;font-size:11px;color:var(--mut)"></div>
+  <button class="infobtn" id="infoBtn" title="How it works & sources">&#9432;</button>
+</div>
 
 <div class="modal" id="infoModal">
   <div class="modal-card">
@@ -189,7 +272,62 @@ header{padding-right:96px}
   <section id="players"></section>
 </main>
 <div class="foot" id="foot"></div>
+</div><!-- /app-soccer -->
+
+<div id="app-nhl" class="sportapp">
+<div class="sporthead">
+  <button class="backbtn" data-home>← Sports</button>
+  <h2>🏒 NHL</h2>
+  <button class="infobtn" id="nhlInfoBtn" title="How it works & sources">&#9432;</button>
+</div>
+<div class="modal" id="nhlInfoModal">
+  <div class="modal-card">
+    <button class="modal-close">✕ Close</button>
+    <h2>How the NHL model works</h2>
+    <p>Each team gets an <b>attack</b> and <b>defense</b> rating, blended from several hockey metrics, then a Poisson model turns them into win odds, totals, and the puck line. Built for insight — not betting advice.</p>
+    <h3>The metrics (what actually drives a game)</h3>
+    <ul>
+      <li>🥅 <b>Shot-quality expected goals (xG)</b> — every shot's x/y location → chance quality created (offense) and allowed (defense), from MoneyPuck.</li>
+      <li>🧤 <b>Goaltending (GSAx)</b> — goals saved above expected; stopping high-danger shots at a higher clip.</li>
+      <li>📊 <b>Goals model + Elo</b> — results, margin, and long-run strength (recency-weighted).</li>
+      <li>⚡ <b>Special teams</b> — power play and penalty kill.</li>
+    </ul>
+    <h3>Per-game factors you can set</h3>
+    <ul>
+      <li><b>Starting goalie</b> — the single biggest swing in a hockey game.</li>
+      <li><b>Rest / back-to-back</b>, <b>injuries</b>, and <b>home ice</b>.</li>
+    </ul>
+    <p class="src-note">Self-updating: pulls the latest games and shots daily and rolls forward every season automatically. Data through <span id="nhlSrcDate">—</span>.</p>
+  </div>
+</div>
+<nav class="nhlnav">
+  <button data-ntab="npredict" class="on">Predict</button>
+  <button data-ntab="nratings">Power ratings</button>
+  <button data-ntab="ngoalies">Goalies (GSAx)</button>
+</nav>
+<main>
+  <div id="npredict" class="nsec on"></div>
+  <div id="nratings" class="nsec"></div>
+  <div id="ngoalies" class="nsec"></div>
+</main>
+<div class="foot" id="nhlfoot"></div>
+</div><!-- /app-nhl -->
+
 <script src="data.js"></script>
+<script src="nhl_data.js"></script>
 <script src="app.js"></script>
+<script src="nhl_app.js"></script>
+<script>
+(function(){
+  var home=document.getElementById('home');
+  var apps={soccer:document.getElementById('app-soccer'), nhl:document.getElementById('app-nhl')};
+  function showHome(){home.classList.add('on');for(var k in apps)apps[k].classList.remove('on');history.replaceState(null,'','#');scrollTo(0,0);}
+  function showSport(s){if(!apps[s])return showHome();home.classList.remove('on');for(var k in apps)apps[k].classList.toggle('on',k===s);history.replaceState(null,'','#'+s);scrollTo(0,0);}
+  document.querySelectorAll('.sporttile[data-sport]').forEach(function(t){t.onclick=function(){showSport(t.dataset.sport);};});
+  document.querySelectorAll('[data-home]').forEach(function(b){b.onclick=showHome;});
+  document.getElementById('goHome').onclick=showHome;
+  var h=(location.hash||'').replace('#',''); if(apps[h])showSport(h); else showHome();
+})();
+</script>
 </body>
 </html>

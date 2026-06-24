@@ -28,12 +28,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build predictions from the latest data
+      - name: Build SOCCER predictions
         run: |
           python build_context.py
           python build_ratings.py --refresh
           python build_player_intl.py
           python export_web.py
+      - name: Build NHL predictions (self-updating; auto-rolls season, daily games/shots)
+        continue-on-error: true
+        run: |
+          python build_nhl_xg.py
+          python build_nhl.py
+          python nhl_export.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

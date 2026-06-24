@@ -327,11 +327,11 @@ function playerOdds(team, teamLambda){
   const base = P.avg * T[team].att_mult;               // team's exp. goals vs an average defence
   const scale = base > 0 ? teamLambda/base : 1;        // scale to this matchup (opponent defence)
   const af = {FWD:0.55, MID:1.0, DEF:0.7};             // assist-to-goal ratio by role (estimate)
-  const PEN_RATE = 0.22;                               // ~P(team wins a penalty in a match)
   const CAL_FLOOR = 0.045, CAL_GAMMA = 0.55;           // backtest calibration (backtest_players.py): baseline hazard + discount; beats baseline log-loss
   return (D.players[team]||[]).map(p=>{
-    let gx = (p.op||0)*scale + (p.fk||0)*scale;        // open-play xG + direct free kicks, defence-scaled
-    if(p.pen) gx += PEN_RATE*(p.pc||0.75);             // penalty-taker bonus (set piece)
+    // open-play + direct free kicks scale with the matchup defence; penalties (p.peng,
+    // each player's real recency-weighted penalty-goal rate) do NOT — a pen is a pen.
+    let gx = (p.op||0)*scale + (p.fk||0)*scale + (p.peng||0);
     const ax = (p.op||0)*(af[p.pos]||0.6)*scale;       // assist estimate
     const gh = CAL_FLOOR + CAL_GAMMA*gx, ah = CAL_GAMMA*ax;   // calibrated hazards (cures raw over-confidence; floor only on goals)
     return {...p, pg:(1-Math.exp(-gh))*100, pa:(1-Math.exp(-ah))*100, pga:(1-Math.exp(-(gh+ah)))*100};
@@ -340,11 +340,12 @@ function playerOdds(team, teamLambda){
 function playersScreen(){
   const sec=document.getElementById("players"); sec.innerHTML="";
   sec.appendChild(el(`<div class="card"><h3>Player odds — ${P.stage_label}</h3>
-    <div class="mini">Anytime <b>goal</b> / <b>assist</b> / <b>goal-or-assist</b> chances for the main contributors, from each player's real international scoring rate scaled to the matchup. Assists are modelled estimates (no public assist feed).</div></div>`));
+    <div class="mini">Anytime <b>goal</b> / <b>assist</b> / <b>goal-or-assist</b> chances for the main contributors. Built from each player's <b>recency-weighted real international scoring rate</b> (every team, via 47k+ logged goals) refined by <b>StatsBomb shot quality</b> where available, scaled to the matchup defence, and calibrated against history. A <span class="ppos low">low data</span> tag means we have little real data on that player — treat any gap vs the bookmaker as our blind spot, not an edge. Assists are modelled estimates (no public assist feed).</div></div>`));
   const up=D.fixtures.filter(f=>f.status==="scheduled"&&T[f.home]&&T[f.away]);
   if(!up.length){ sec.appendChild(el(`<div class="card"><div class="note">No upcoming fixtures right now.</div></div>`)); return; }
   const rows=(team,lam)=>{ const ps=playerOdds(team,lam);
-    return ps.length ? ps.map(p=>`<div class="prow"><span class="pn">${flag(team)} ${p.n} <span class="ppos">${p.pos}</span>${p.pen?' <span class="ppos pk">PK</span>':''}</span><span class="pg">${p.pg.toFixed(0)}%</span><span class="pg">${p.pa.toFixed(0)}%</span><span class="pg ga">${p.pga.toFixed(0)}%</span></div>`).join("")
+    return ps.length ? ps.map(p=>{ const low=(p.conf!=null&&p.conf<0.35);
+      return `<div class="prow${low?' lowconf':''}"><span class="pn">${flag(team)} ${p.n} <span class="ppos">${p.pos}</span>${p.pen?' <span class="ppos pk">PK</span>':''}${low?' <span class="ppos low" title="Limited real data on this player — low confidence">low data</span>':''}</span><span class="pg">${p.pg.toFixed(0)}%</span><span class="pg">${p.pa.toFixed(0)}%</span><span class="pg ga">${p.pga.toFixed(0)}%</span></div>`; }).join("")
       : `<div class="mini" style="padding:6px 2px">${flag(team)} ${team} — no standout scorer.</div>`; };
   up.forEach(f=>{
     const A=f.home,B=f.away, ko=f.stage==="knockout", host=hostOf(A,B);

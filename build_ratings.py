@@ -20,6 +20,8 @@ import csv, math, datetime, argparse, urllib.request
 import os
 PROJ = os.path.dirname(os.path.abspath(__file__))
 RESULTS_URL = "https://raw.githubusercontent.com/martj42/international_results/master/results.csv"
+GOALSCORERS_URL = "https://raw.githubusercontent.com/martj42/international_results/master/goalscorers.csv"
+SHOOTOUTS_URL = "https://raw.githubusercontent.com/martj42/international_results/master/shootouts.csv"
 XG_URL = "https://raw.githubusercontent.com/mominullptr/FIFA-World-Cup-2026-Dataset/main/matches_detailed.csv"
 SQUADS_URL = "https://raw.githubusercontent.com/mominullptr/FIFA-World-Cup-2026-Dataset/main/squads_and_players.csv"
 PLAYERS_URL = "https://raw.githubusercontent.com/mominullptr/FIFA-World-Cup-2026-Dataset/main/parsed_players.json"
@@ -36,6 +38,11 @@ if _args.refresh:
         print("  results done.")
     except Exception as e:
         print(f"  results refresh FAILED ({e}); using existing file.")
+    for url, fn in [(GOALSCORERS_URL, "goalscorers.csv"), (SHOOTOUTS_URL, "shootouts.csv")]:
+        try:
+            urllib.request.urlretrieve(url, PROJ + "\\" + fn); print(f"  {fn} done.")
+        except Exception as e:
+            print(f"  {fn} refresh failed ({e}); using existing file.")
     try:
         urllib.request.urlretrieve(XG_URL, PROJ + r"\wc2026_xg.csv")
         print("  xG done.")

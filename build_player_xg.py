@@ -12,7 +12,7 @@ PROJ = os.path.dirname(os.path.abspath(__file__))
 BASE = "https://raw.githubusercontent.com/statsbomb/open-data/master/data"
 # (competition_id, season_id, label, recency_weight)
 COMPS = [(43,106,"World Cup 2022",0.70), (55,282,"Euro 2024",1.00), (55,43,"Euro 2020",0.55),
-         (223,282,"Copa America 2024",1.00), (1267,107,"AFCON 2023",0.85)]
+         (223,282,"Copa America 2024",1.00), (1267,107,"AFCON 2023",0.85), (43,3,"World Cup 2018",0.45)]
 
 def fetch(url):
     with urllib.request.urlopen(url, timeout=45) as r:

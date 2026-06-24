@@ -1,18 +1,22 @@
 name: Update predictions
+
 on:
   schedule:
-    - cron: "0 8 * * *"
-    - cron: "0 20 * * *"
-  workflow_dispatch: {}
+    - cron: "0 8 * * *"    # 08:00 UTC daily
+    - cron: "0 20 * * *"   # 20:00 UTC daily
+  workflow_dispatch: {}     # lets you press "Run workflow" anytime
   push:
     branches: [ main ]
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 concurrency:
   group: pages
   cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     runs-on: windows-latest
@@ -28,6 +32,7 @@ jobs:
         run: |
           python build_context.py
           python build_ratings.py --refresh
+          python build_player_intl.py
           python export_web.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

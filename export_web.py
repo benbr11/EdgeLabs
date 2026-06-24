@@ -125,6 +125,26 @@ def _clean_name(s):
     return " ".join(out) or s
 SB_TEAMFIX = {"Cape Verde Islands":"Cape Verde","Congo DR":"DR Congo","Korea Republic":"South Korea",
               "Côte d'Ivoire":"Ivory Coast","Czechia":"Czech Republic","Türkiye":"Turkey","United States of America":"United States"}
+def _matchlist(lst, name):
+    tk = _norm(name); best = None; bestn = 0
+    for c in lst:
+        n = len(tk & c["tok"])
+        if n > bestn: bestn, best = n, c
+    return best if bestn >= 1 else None
+
+# (1) UNIVERSAL international scoring profile (martj42 goalscorers.csv) -- covers EVERY
+# national team, recency-weighted, open-play vs penalty split. The backbone of the model.
+intl_by_team = {}
+try:
+    for r in csv.DictReader(open(PROJ + r"\player_intl.csv", encoding="utf-8")):
+        tm = XG_NAME.get(r["team"], r["team"])
+        intl_by_team.setdefault(tm, []).append({"tok": _norm(r["scorer"]),
+            "op_rate": float(r["op_rate"]), "pen_rate": float(r["pen_rate"]),
+            "opg_w": float(r["op_goals_w"]), "peng_w": float(r["pen_goals_w"])})
+except FileNotFoundError:
+    pass
+
+# (2) StatsBomb shot QUALITY (player_xg.csv) -- nudges the rate where we have shot data.
 sb_by_team = {}
 try:
     for r in csv.DictReader(open(PROJ + r"\player_xg.csv", encoding="utf-8")):
@@ -134,12 +154,6 @@ try:
             "npxg": float(r["npxg"]), "pen_sh": float(r["pen_sh"]), "pen_g": float(r["pen_g"]), "fk_xg": float(r["fk_xg"])})
 except FileNotFoundError:
     pass
-def _match_sb(team, name):
-    tk = _norm(name); best = None; bestn = 0
-    for c in sb_by_team.get(team, []):
-        n = len(tk & c["tok"])
-        if n > bestn: bestn, best = n, c
-    return best if bestn >= 1 else None
 
 PLAYERS = {}
 try:
@@ -148,29 +162,52 @@ try:
     bucket = {}
     for r in csv.DictReader(open(PROJ + r"\squads.csv", encoding="utf-8")):
         team = XG_NAME.get(id2name.get(int(r["team_id"]), ""), id2name.get(int(r["team_id"]), ""))
-        if team not in R:
+        if team not in R or r["position"] == "GK":
             continue
         pos = r["position"]; caps = int(r["caps"] or 0); goals = int(r["goals"] or 0)
+        if caps < 5: continue
         val = float(r["market_value_eur"] or 0) / 1e6
-        career = goals/(caps+2)                                   # career intl goals/game (incl. pens)
-        if pos == "GK" or caps < 5 or (career < 0.07 and val < 25):
-            continue
-        sb = _match_sb(team, r["player_name"])
-        if sb and sb["apps"] >= 1:
-            npxg_pg = sb["npxg"]/sb["apps"]; K = 4.0              # shrink small samples toward career rate
-            op = (sb["apps"]*npxg_pg + K*career) / (sb["apps"]+K) # open-play expected goals/game
-            pen = 1 if sb["pen_sh"] >= 1.0 else 0                 # is the penalty taker
-            pc = round(sb["pen_g"]/sb["pen_sh"], 2) if sb["pen_sh"] > 0 else 0.75
-            fk = round(sb["fk_xg"]/sb["apps"], 3)                 # direct free-kick xG/game
+        career_op = goals/(caps+2) * 0.85                         # career open-play rate (stability prior)
+        intl = _matchlist(intl_by_team.get(team, []), r["player_name"])
+        sb = _matchlist(sb_by_team.get(team, []), r["player_name"])
+        sb_apps = sb["apps"] if sb else 0.0
+        # --- open-play goals/game: universal recency rate, nudged by StatsBomb shot quality,
+        #     then shrunk toward the career prior for thin samples (Bayesian-ish) ---
+        if intl:
+            op_core = intl["op_rate"]
+            if sb_apps >= 1.5:
+                op_core = 0.6*intl["op_rate"] + 0.4*(sb["npxg"]/sb_apps)   # blend actual + shot xG
+            n_eff = intl["opg_w"] + intl["peng_w"] + 0.5*sb_apps           # how much real signal
+            peng = intl["pen_rate"]; pengw = intl["peng_w"]                # data-driven penalty rate
+        elif sb_apps >= 1.5:
+            op_core = 0.5*(sb["npxg"]/sb_apps) + 0.5*career_op
+            n_eff = sb_apps; peng = (sb["pen_g"]/sb_apps); pengw = sb["pen_g"]
         else:
-            op = career*0.9; pen = 0; pc = 0.75; fk = 0.0         # no shot data -> career rate
+            op_core = career_op; n_eff = 0.0; peng = 0.0; pengw = 0.0
+        K = 3.0
+        op = (n_eff*op_core + K*career_op) / (n_eff + K)
+        fk = round(sb["fk_xg"]/sb_apps, 3) if sb_apps >= 1.5 else 0.0
+        # confidence 0..1: how much real data backs this player (drives the app's trust flag)
+        conf = min(1.0, (intl["opg_w"]+intl["peng_w"] if intl else 0)/5.0 + min(sb_apps, 8)/16.0)
+        if not intl and sb_apps < 1.5: conf = min(conf, 0.15)
+        if op < 0.02 and pengw < 0.3: continue                   # not a goal threat
         bucket.setdefault(team, []).append({"n": _clean_name(r["player_name"]), "pos": pos, "val": round(val),
-            "op": round(op, 3), "pen": pen, "pc": pc, "fk": fk,
-            "thr": round(op + (0.18 if pen else 0) + fk, 3)})
+            "op": round(op, 3), "peng": round(peng, 3), "fk": fk, "pen": 0, "pengw": pengw, "conf": round(conf, 2)})
     for team, lst in bucket.items():
-        lst.sort(key=lambda p: -p["thr"]); PLAYERS[team] = [{k: v for k, v in p.items() if k != "thr"} for p in lst[:8]]
+        # ONE designated penalty taker per team for the PK badge: most recent-weighted pen goals
+        cand = max(lst, key=lambda p: p["pengw"], default=None)
+        if cand and cand["pengw"] >= 0.8: cand["pen"] = 1
+        for p in lst: p["thr"] = round(p["op"] + p["peng"] + p["fk"], 3)
+        lst.sort(key=lambda p: -p["thr"])
+        PLAYERS[team] = [{k: v for k, v in p.items() if k not in ("thr", "pengw")} for p in lst[:8]]
     print(f"Players: {sum(len(v) for v in PLAYERS.values())} contributors, {len(PLAYERS)} teams; "
-          f"{sum(1 for t in PLAYERS for p in PLAYERS[t] if p['pen'])} penalty takers")
+          f"{sum(1 for t in PLAYERS for p in PLAYERS[t] if p['pen'])} penalty takers; "
+          f"{sum(1 for t in PLAYERS for p in PLAYERS[t] if p['conf']>=0.35)} high/med-confidence")
+    for tm, nm in [("Bosnia and Herzegovina","demirovic"),("Qatar","afif"),("France","mbappe"),
+                   ("England","kane"),("Norway","haaland"),("Argentina","messi")]:
+        for p in PLAYERS.get(tm, []):
+            if nm in _clean_name(p["n"]).lower() or nm in p["n"].lower():
+                print(f"  {tm}/{p['n']}: op={p['op']} peng={p['peng']} fk={p['fk']} pen={p['pen']} conf={p['conf']}")
 except FileNotFoundError:
     print("squads.csv/players_raw.json missing -- skipping player odds")
 

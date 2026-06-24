@@ -30,7 +30,7 @@ CACHE = PROJ + r"\player_match_xg.csv"
 # (competition_id, season_id, label) -- equal weight here; the backtest validates the
 # METHOD (does xG-rate predict goals), which is weighting-agnostic.
 COMPS = [(43,106,"WC2022"), (55,282,"Euro2024"), (55,43,"Euro2020"),
-         (223,282,"Copa2024"), (1267,107,"AFCON2023")]
+         (223,282,"Copa2024"), (1267,107,"AFCON2023"), (43,3,"WC2018")]
 
 def fetch(url):
     with urllib.request.urlopen(url, timeout=45) as r:
@@ -285,5 +285,46 @@ for comp, lst in per_comp_pred.items():
     tot += 1; hit += 1 if (pred5 & real_top) else 0
 if tot:
     print(f"  Held-out top scorer landed in model's predicted top-5: {hit}/{tot} tournaments")
+# =====================================================================
+# TEST 4: ABLATION -- does the shot-xG model beat a plain goals/game model?
+# The sophistication (StatsBomb coordinates, defence-scaling, set pieces) only
+# matters if it beats what a simple market already knows: each player's historical
+# goals per game. Both models calibrated the same way for a fair fight.
+# =====================================================================
+yv = [s[1] for s in samples]
+naive = [max((T_GOALS[(s[6], s[5])] - s[3]) / (T_APP[(s[6], s[5])] - 1), 0.0) for s in samples]
+def _calibrate(rl):
+    best = None
+    for fi in range(0, 21):
+        fl = fi * 0.005
+        for gi in range(4, 25):
+            gm = gi * 0.05
+            acc = sum(_ll(1 - math.exp(-(fl + gm * rl[i])), yv[i]) for i in range(n)) / n
+            if best is None or acc < best[0]: best = (acc, fl, gm)
+    ll_, fl_, gm_ = best
+    return ll_, [1 - math.exp(-(fl_ + gm_ * rl[i])) for i in range(n)]
+def _auc(ps):
+    pos = [ps[i] for i in range(n) if yv[i] == 1]; neg = [ps[i] for i in range(n) if yv[i] == 0]
+    if not pos or not neg: return float("nan")
+    sp = sorted([(p, 1) for p in pos] + [(p, 0) for p in neg]); rk = {}; i = 0
+    while i < len(sp):
+        j = i
+        while j < len(sp) and sp[j][0] == sp[i][0]: j += 1
+        for t in range(i, j): rk[t] = (i + j - 1) / 2 + 1
+        i = j
+    s_pos = sum(rk[idx] for idx, (_, yy) in enumerate(sp) if yy == 1)
+    return (s_pos - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg))
+ll_full, p_full = _calibrate([s[2] for s in samples])
+ll_naive, p_naive = _calibrate(naive)
+print("\n" + "=" * 64)
+print("TEST 4 - ABLATION  (is the shot-xG sophistication worth anything?)")
+print("=" * 64)
+print(f"  shot-xG model   LogLoss {ll_full:.4f}   AUC {_auc(p_full):.3f}")
+print(f"  plain goals/gm  LogLoss {ll_naive:.4f}   AUC {_auc(p_naive):.3f}")
+edge = ll_naive - ll_full
+print(f"  >> shot-xG {'BEATS' if edge>0 else 'does NOT beat'} plain goals/game "
+      f"by {edge:+.4f} log-loss ({edge/ll_naive*100:+.1f}%)")
+print("  (If this gap is ~0, our fancy data adds nothing a basic market wouldn't have.)")
+
 print("\nDone. (Football is high-variance: even a 'should-score' striker blanks most games --")
 print(" these tests show the model ranks and calibrates scorers well, not clairvoyance.)")

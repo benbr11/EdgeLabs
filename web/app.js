@@ -1,6 +1,8 @@
 "use strict";
 const D = window.WC_DATA, P = D.params, M = D.mods, T = D.teams;
 const TEAMS = Object.keys(T).sort();
+const FLAG_CODE={Canada:"ca",Mexico:"mx","United States":"us",Australia:"au",Iran:"ir",Iraq:"iq",Japan:"jp",Jordan:"jo",Qatar:"qa","Saudi Arabia":"sa","South Korea":"kr",Uzbekistan:"uz",Algeria:"dz","Cape Verde":"cv","DR Congo":"cd",Egypt:"eg",Ghana:"gh","Ivory Coast":"ci",Morocco:"ma",Senegal:"sn","South Africa":"za",Tunisia:"tn","Curaçao":"cw",Haiti:"ht",Panama:"pa",Argentina:"ar",Brazil:"br",Colombia:"co",Ecuador:"ec",Paraguay:"py",Uruguay:"uy","New Zealand":"nz",Austria:"at",Belgium:"be","Bosnia and Herzegovina":"ba",Croatia:"hr","Czech Republic":"cz",England:"gb-eng",France:"fr",Germany:"de",Netherlands:"nl",Norway:"no",Portugal:"pt",Scotland:"gb-sct",Spain:"es",Sweden:"se",Switzerland:"ch",Turkey:"tr"};
+function flag(t){ const c=FLAG_CODE[t]; return c?`<img class="flag" src="https://flagcdn.com/w40/${c}.png" alt="" loading="lazy" onerror="this.style.display='none'">`:""; }
 const el = (h) => { const d = document.createElement("div"); d.innerHTML = h.trim(); return d.firstChild; };
 
 /* ----------------------------- prediction math (mirrors simulate.py) ------- */
@@ -196,22 +198,22 @@ function renderResult(r,ko,odds){
   if(ko){
     h+=`<div class="probbar"><div class="sA" style="width:${Math.max(2,r.advA)}%">${r.advA.toFixed(0)}%</div>
         <div class="sB" style="width:${Math.max(2,r.advB)}%">${r.advB.toFixed(0)}%</div></div>
-        <div class="big"><div><div class="n">${r.advA.toFixed(1)}%</div><div class="l">${A} advance</div></div>
-        <div><div class="n">${r.advB.toFixed(1)}%</div><div class="l">${B} advance</div></div></div>
+        <div class="big"><div><div class="n">${r.advA.toFixed(1)}%</div><div class="l">${flag(A)} ${A}</div></div>
+        <div><div class="n">${r.advB.toFixed(1)}%</div><div class="l">${flag(B)} ${B}</div></div></div>
         <div class="xg">90 min: ${A} ${r.pA.toFixed(0)}% / draw ${r.pD.toFixed(0)}% / ${B} ${r.pB.toFixed(0)}% · extra time ${r.pET.toFixed(0)}% · penalties ${r.pPen.toFixed(1)}%</div>`;
   } else {
     h+=`<div class="probbar"><div class="sA" style="width:${Math.max(3,r.pA)}%">${r.pA.toFixed(0)}%</div>
         <div class="sD" style="width:${Math.max(3,r.pD)}%">${r.pD.toFixed(0)}%</div>
         <div class="sB" style="width:${Math.max(3,r.pB)}%">${r.pB.toFixed(0)}%</div></div>
-        <div class="big"><div><div class="n">${r.pA.toFixed(1)}%</div><div class="l">${A} win</div></div>
+        <div class="big"><div><div class="n">${r.pA.toFixed(1)}%</div><div class="l">${flag(A)} ${A}</div></div>
         <div><div class="n">${r.pD.toFixed(1)}%</div><div class="l">draw</div></div>
-        <div><div class="n">${r.pB.toFixed(1)}%</div><div class="l">${B} win</div></div></div>`;
+        <div><div class="n">${r.pB.toFixed(1)}%</div><div class="l">${flag(B)} ${B}</div></div></div>`;
   }
   h+=`<div class="xg">Expected goals — ${A} <b>${r.exA.toFixed(2)}</b> · ${B} <b>${r.exB.toFixed(2)}</b></div>`;
   h+=`<div class="statline"><span>Both teams to score: <b>${r.btts.toFixed(0)}%</b></span>
       <span>Clean sheet — ${A} <b>${r.csA.toFixed(0)}%</b></span><span>${B} <b>${r.csB.toFixed(0)}%</b></span></div>`;
   h+=`<h4>Most likely scorelines</h4>`;
-  h+=r.top.map(s=>`<div class="scoreline"><span>${A} ${s.i} – ${s.j} ${B}</span><span class="p">${s.p.toFixed(1)}%</span></div>`).join("");
+  h+=r.top.map(s=>`<div class="scoreline"><span>${flag(A)} ${A} ${s.i} – ${s.j} ${B} ${flag(B)}</span><span class="p">${s.p.toFixed(1)}%</span></div>`).join("");
   if(odds[0]>1&&odds[1]>1&&odds[2]>1){
     const raw=[1/odds[0],1/odds[1],1/odds[2]], ov=raw[0]+raw[1]+raw[2], mp=[r.pA/100,r.pD/100,r.pB/100], lab=[A,"Draw",B];
     h+=`<h4>Edge vs market (overround ${((ov-1)*100).toFixed(1)}%)</h4><table><tr><th>Outcome</th><th>Model</th><th>Mkt</th><th>Odds</th><th>EV</th></tr>`;
@@ -230,7 +232,7 @@ function groupsScreen(){
   const adv=groupAdvanceOdds();
   D.groups.forEach(g=>{
     const rows=g.table.map(r=>{const s=T[r.team].stakes; const a=adv[r.team]??0;
-      return `<tr><td>${r.team} ${r.P>=2?stakeTag(s):''}</td><td>${r.P}</td><td><b>${r.pts}</b></td><td>${r.gf}-${r.ga}</td><td>${r.gd>=0?'+':''}${r.gd}</td><td class="adv">${a.toFixed(0)}%</td></tr>`;}).join("");
+      return `<tr><td>${flag(r.team)} ${r.team} ${r.P>=2?stakeTag(s):''}</td><td>${r.P}</td><td><b>${r.pts}</b></td><td>${r.gf}-${r.ga}</td><td>${r.gd>=0?'+':''}${r.gd}</td><td class="adv">${a.toFixed(0)}%</td></tr>`;}).join("");
     const rem=g.remaining.length?`<div class="mini" style="margin-top:8px">Remaining: ${g.remaining.map(m=>m[0]+" v "+m[1]).join(" · ")}</div>`:`<div class="mini" style="margin-top:8px">Group complete</div>`;
     sec.appendChild(el(`<div class="card"><h3>${g.name}</h3>
       <table><tr><th>Team</th><th>P</th><th>Pts</th><th>GF-GA</th><th>GD</th><th>Adv%</th></tr>${rows}</table>${rem}</div>`));
@@ -251,7 +253,7 @@ function koBracketScreen(){
       if(!T[f.home]||!T[f.away]) return `<div class="ko-tie"><span>${f.home} v ${f.away}</span><span class="pill">—</span></div>`;
       const r=predict(f.home,f.away,{knockout:true,host:hostOf(f.home,f.away)});
       const w=r.advA>=r.advB?f.home:f.away, wp=Math.max(r.advA,r.advB);
-      return `<div class="ko-tie"><span>${f.home} v ${f.away}</span><span><span class="win">${w}</span> <span class="pill">${wp.toFixed(0)}%</span></span></div>`;
+      return `<div class="ko-tie"><span>${flag(f.home)} ${f.home} v ${flag(f.away)} ${f.away}</span><span><span class="win">${w}</span> <span class="pill">${wp.toFixed(0)}%</span></span></div>`;
     }).join("");
     sec.appendChild(el(`<div class="card"><h3>${rd}</h3>${ties}</div>`));
   });
@@ -273,7 +275,7 @@ function slateScreen(){
     const r=predict(A,B,o);
     const summary = ko ? `<span class="win">${r.advA>=r.advB?A:B}</span> ${Math.max(r.advA,r.advB).toFixed(0)}% adv`
       : `${A} ${r.pA.toFixed(0)} / D ${r.pD.toFixed(0)} / ${B} ${r.pB.toFixed(0)}`;
-    const item=el(`<div class="slate-item" style="cursor:pointer"><div>${A} <span class="pill">v</span> ${B}${ko?' <span class="tag ko">KO</span>':''}</div><div class="pill">${summary} ›</div></div>`);
+    const item=el(`<div class="slate-item" style="cursor:pointer"><div>${flag(A)} ${A} <span class="pill">v</span> ${flag(B)} ${B}${ko?' <span class="tag ko">KO</span>':''}</div><div class="pill">${summary} ›</div></div>`);
     item.onclick=()=>{ if(window.predictMatchup){ window.predictMatchup(A,B); document.querySelector('nav button[data-tab="predict"]').click(); window.scrollTo(0,0); } };
     list.appendChild(item);
   });
@@ -305,7 +307,7 @@ function titleOddsScreen(){
   const note = P.group_complete ? "Qualified teams." : "Projected from current standings (group stage in progress)";
   const card=el(`<div class="card"><h3>Title odds</h3><div class="mini">${note} · rating-seeded 32-team bracket · ${N.toLocaleString()} simulations. A projection of who wins it all (not the official draw).</div><div id="ch"></div></div>`);
   sec.appendChild(card);
-  card.querySelector("#ch").innerHTML=rows.map(r=>`<div class="champ"><span>${r.t}</span><span style="text-align:right">
+  card.querySelector("#ch").innerHTML=rows.map(r=>`<div class="champ"><span>${flag(r.t)} ${r.t}</span><span style="text-align:right">
     <b>${r.c.toFixed(1)}%</b> <span class="mini">cup · ${r.f.toFixed(0)}% final</span>
     <div class="bar"><i style="width:${Math.min(100,r.c*2.5)}%"></i></div></span></div>`).join("");
 }

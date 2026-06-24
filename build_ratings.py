@@ -21,6 +21,8 @@ import os
 PROJ = os.path.dirname(os.path.abspath(__file__))
 RESULTS_URL = "https://raw.githubusercontent.com/martj42/international_results/master/results.csv"
 XG_URL = "https://raw.githubusercontent.com/mominullptr/FIFA-World-Cup-2026-Dataset/main/matches_detailed.csv"
+SQUADS_URL = "https://raw.githubusercontent.com/mominullptr/FIFA-World-Cup-2026-Dataset/main/squads_and_players.csv"
+PLAYERS_URL = "https://raw.githubusercontent.com/mominullptr/FIFA-World-Cup-2026-Dataset/main/parsed_players.json"
 
 # `python build_ratings.py --refresh` re-pulls the latest match results first, so
 # ratings reflect every game played up to now. Run this before simulating a new match.
@@ -39,6 +41,11 @@ if _args.refresh:
         print("  xG done.")
     except Exception as e:
         print(f"  xG refresh failed ({e}); using existing file.")
+    for url, fn in [(SQUADS_URL, "squads.csv"), (PLAYERS_URL, "players_raw.json")]:
+        try:
+            urllib.request.urlretrieve(url, PROJ + "\\" + fn); print(f"  {fn} done.")
+        except Exception as e:
+            print(f"  {fn} refresh failed ({e}); using existing file.")
 
 # ---- the 48 qualified teams (names as they appear in results.csv) -------------
 TEAMS = [

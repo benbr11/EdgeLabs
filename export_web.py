@@ -107,9 +107,72 @@ for (d, h, a) in sched:
 fixtures.sort(key=lambda x: x["date"])
 generated = max((f["date"] for f in fixtures if f["status"] == "played"), default="")
 
+# --- player model: shot-level xG + set pieces (StatsBomb) blended with squad data --
+import unicodedata
+def _norm(s):
+    s = "".join(c for c in unicodedata.normalize("NFKD", s.lower()) if not unicodedata.combining(c))
+    return set(t for t in s.replace("-", " ").split() if len(t) >= 4)
+SB_TEAMFIX = {"Cape Verde Islands":"Cape Verde","Congo DR":"DR Congo","Korea Republic":"South Korea",
+              "Côte d'Ivoire":"Ivory Coast","Czechia":"Czech Republic","Türkiye":"Turkey","United States of America":"United States"}
+sb_by_team = {}
+try:
+    for r in csv.DictReader(open(PROJ + r"\player_xg.csv", encoding="utf-8")):
+        tm = SB_TEAMFIX.get(r["team"], r["team"]); tm = XG_NAME.get(tm, tm)
+        if float(r["apps"]) < 0.5: continue
+        sb_by_team.setdefault(tm, []).append({"tok": _norm(r["player"]), "apps": float(r["apps"]),
+            "npxg": float(r["npxg"]), "pen_sh": float(r["pen_sh"]), "pen_g": float(r["pen_g"]), "fk_xg": float(r["fk_xg"])})
+except FileNotFoundError:
+    pass
+def _match_sb(team, name):
+    tk = _norm(name); best = None; bestn = 0
+    for c in sb_by_team.get(team, []):
+        n = len(tk & c["tok"])
+        if n > bestn: bestn, best = n, c
+    return best if bestn >= 1 else None
+
+PLAYERS = {}
+try:
+    pj = json.load(open(PROJ + r"\players_raw.json", encoding="utf-8"))
+    id2name = {p["team_id"]: p["team_name"] for p in pj}
+    bucket = {}
+    for r in csv.DictReader(open(PROJ + r"\squads.csv", encoding="utf-8")):
+        team = XG_NAME.get(id2name.get(int(r["team_id"]), ""), id2name.get(int(r["team_id"]), ""))
+        if team not in R:
+            continue
+        pos = r["position"]; caps = int(r["caps"] or 0); goals = int(r["goals"] or 0)
+        val = float(r["market_value_eur"] or 0) / 1e6
+        career = goals/(caps+2)                                   # career intl goals/game (incl. pens)
+        if pos == "GK" or caps < 5 or (career < 0.07 and val < 25):
+            continue
+        sb = _match_sb(team, r["player_name"])
+        if sb and sb["apps"] >= 1:
+            npxg_pg = sb["npxg"]/sb["apps"]; K = 4.0              # shrink small samples toward career rate
+            op = (sb["apps"]*npxg_pg + K*career) / (sb["apps"]+K) # open-play expected goals/game
+            pen = 1 if sb["pen_sh"] >= 1.0 else 0                 # is the penalty taker
+            pc = round(sb["pen_g"]/sb["pen_sh"], 2) if sb["pen_sh"] > 0 else 0.75
+            fk = round(sb["fk_xg"]/sb["apps"], 3)                 # direct free-kick xG/game
+        else:
+            op = career*0.9; pen = 0; pc = 0.75; fk = 0.0         # no shot data -> career rate
+        bucket.setdefault(team, []).append({"n": r["player_name"], "pos": pos, "val": round(val),
+            "op": round(op, 3), "pen": pen, "pc": pc, "fk": fk,
+            "thr": round(op + (0.18 if pen else 0) + fk, 3)})
+    for team, lst in bucket.items():
+        lst.sort(key=lambda p: -p["thr"]); PLAYERS[team] = [{k: v for k, v in p.items() if k != "thr"} for p in lst[:8]]
+    print(f"Players: {sum(len(v) for v in PLAYERS.values())} contributors, {len(PLAYERS)} teams; "
+          f"{sum(1 for t in PLAYERS for p in PLAYERS[t] if p['pen'])} penalty takers")
+except FileNotFoundError:
+    print("squads.csv/players_raw.json missing -- skipping player odds")
+
+played_max = max((row["P"] for g in groups_out for row in g["table"]), default=0)
+if group_complete:
+    _kos = sorted([f for f in fixtures if f["status"] == "scheduled" and f.get("round")], key=lambda x: x["date"])
+    stage_label = _kos[0]["round"] if _kos else "Knockouts"
+else:
+    stage_label = f"Matchday {played_max + 1}"
+
 DATA = {"params": {"avg": avg, "home_adv": home_adv, "rho": RHO, "hosts": sorted(G.HOSTS),
-                   "group_complete": group_complete, "generated": generated},
-        "mods": MODS, "teams": R, "groups": groups_out, "fixtures": fixtures}
+                   "group_complete": group_complete, "generated": generated, "stage_label": stage_label},
+        "mods": MODS, "teams": R, "groups": groups_out, "fixtures": fixtures, "players": PLAYERS}
 
 with open(PROJ + r"\web\data.js", "w", encoding="utf-8") as f:
     f.write("window.WC_DATA = " + json.dumps(DATA, ensure_ascii=False) + ";\n")

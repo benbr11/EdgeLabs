@@ -322,6 +322,39 @@ function titleOddsScreen(){
     <div class="bar"><i style="width:${Math.min(100,r.c*2.5)}%"></i></div></span></div>`).join("");
 }
 
+/* --------------------------------- PLAYER ODDS ----------------------------- */
+function playerOdds(team, teamLambda){
+  const base = P.avg * T[team].att_mult;               // team's exp. goals vs an average defence
+  const scale = base > 0 ? teamLambda/base : 1;        // scale to this matchup (opponent defence)
+  const af = {FWD:0.55, MID:1.0, DEF:0.7};             // assist-to-goal ratio by role (estimate)
+  const PEN_RATE = 0.22;                               // ~P(team wins a penalty in a match)
+  return (D.players[team]||[]).map(p=>{
+    let gx = (p.op||0)*scale + (p.fk||0)*scale;        // open-play xG + direct free kicks, defence-scaled
+    if(p.pen) gx += PEN_RATE*(p.pc||0.75);             // penalty-taker bonus (set piece)
+    const ax = (p.op||0)*(af[p.pos]||0.6)*scale;       // assist estimate
+    return {...p, pg:(1-Math.exp(-gx))*100, pa:(1-Math.exp(-ax))*100, pga:(1-Math.exp(-(gx+ax)))*100};
+  }).filter(x=>x.pga>=8).sort((a,b)=>b.pga-a.pga).slice(0,6);
+}
+function playersScreen(){
+  const sec=document.getElementById("players"); sec.innerHTML="";
+  sec.appendChild(el(`<div class="card"><h3>Player odds — ${P.stage_label}</h3>
+    <div class="mini">Anytime <b>goal</b> / <b>assist</b> / <b>goal-or-assist</b> chances for the main contributors, from each player's real international scoring rate scaled to the matchup. Assists are modelled estimates (no public assist feed).</div></div>`));
+  const up=D.fixtures.filter(f=>f.status==="scheduled"&&T[f.home]&&T[f.away]);
+  if(!up.length){ sec.appendChild(el(`<div class="card"><div class="note">No upcoming fixtures right now.</div></div>`)); return; }
+  const rows=(team,lam)=>{ const ps=playerOdds(team,lam);
+    return ps.length ? ps.map(p=>`<div class="prow"><span class="pn">${flag(team)} ${p.n} <span class="ppos">${p.pos}</span>${p.pen?' <span class="ppos pk">PK</span>':''}</span><span class="pg">${p.pg.toFixed(0)}%</span><span class="pg">${p.pa.toFixed(0)}%</span><span class="pg ga">${p.pga.toFixed(0)}%</span></div>`).join("")
+      : `<div class="mini" style="padding:6px 2px">${flag(team)} ${team} — no standout scorer.</div>`; };
+  up.forEach(f=>{
+    const A=f.home,B=f.away, ko=f.stage==="knockout", host=hostOf(A,B);
+    const o={knockout:ko,host:host,vTemp:f.vtemp??null,vAlt:f.valt??null};
+    if(!ko&&f.stage==="group"){o.stakesA=T[A].stakes;o.stakesB=T[B].stakes;}
+    const r=predict(A,B,o);
+    sec.appendChild(el(`<div class="card"><h4 style="margin:0 0 8px">${flag(A)} ${A} <span class="pill">v</span> ${flag(B)} ${B} <span class="mini">· ${f.date}</span></h4>
+      <div class="prow phead"><span class="pn">Player</span><span class="pg">Goal</span><span class="pg">Assist</span><span class="pg ga">G+A</span></div>
+      ${rows(A,r.exA)}${rows(B,r.exB)}</div>`));
+  });
+}
+
 /* --------------------------------- theme + nav + init ---------------------- */
 function setTheme(light){ document.body.classList.toggle("light",light);
   document.getElementById("themeBtn").textContent=light?"☀️":"🌙";
@@ -343,6 +376,7 @@ function show(tab){
   if(tab==="groups"&&!document.getElementById("groups").innerHTML){ groupsComplete?koBracketScreen():groupsScreen(); }
   if(tab==="slate"&&!document.getElementById("slate").innerHTML) slateScreen();
   if(tab==="bracket"&&!document.getElementById("bracket").innerHTML) titleOddsScreen();
+  if(tab==="players"&&!document.getElementById("players").innerHTML) playersScreen();
 }
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.tab));
 document.getElementById("subtitle").textContent=`48 teams · Dixon-Coles + xG model · data through ${P.generated}`;

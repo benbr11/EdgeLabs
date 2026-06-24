@@ -3,6 +3,10 @@ const D = window.WC_DATA, P = D.params, M = D.mods, T = D.teams;
 const TEAMS = Object.keys(T).sort();
 const FLAG_CODE={Canada:"ca",Mexico:"mx","United States":"us",Australia:"au",Iran:"ir",Iraq:"iq",Japan:"jp",Jordan:"jo",Qatar:"qa","Saudi Arabia":"sa","South Korea":"kr",Uzbekistan:"uz",Algeria:"dz","Cape Verde":"cv","DR Congo":"cd",Egypt:"eg",Ghana:"gh","Ivory Coast":"ci",Morocco:"ma",Senegal:"sn","South Africa":"za",Tunisia:"tn","Curaçao":"cw",Haiti:"ht",Panama:"pa",Argentina:"ar",Brazil:"br",Colombia:"co",Ecuador:"ec",Paraguay:"py",Uruguay:"uy","New Zealand":"nz",Austria:"at",Belgium:"be","Bosnia and Herzegovina":"ba",Croatia:"hr","Czech Republic":"cz",England:"gb-eng",France:"fr",Germany:"de",Netherlands:"nl",Norway:"no",Portugal:"pt",Scotland:"gb-sct",Spain:"es",Sweden:"se",Switzerland:"ch",Turkey:"tr"};
 function flag(t){ const c=FLAG_CODE[t]; return c?`<img class="flag" src="https://flagcdn.com/w40/${c}.png" alt="" loading="lazy" onerror="this.style.display='none'">`:""; }
+const TEAM_COLOR={Canada:"#D52B1E",Mexico:"#006847","United States":"#2A3C7D",Australia:"#00843D",Iran:"#239F40",Iraq:"#1A8A4A",Japan:"#BC002D",Jordan:"#007A3D",Qatar:"#8A1538","Saudi Arabia":"#1B7A3D","South Korea":"#003478",Uzbekistan:"#1EB53A",Algeria:"#1B7A3D","Cape Verde":"#0A3A8B","DR Congo":"#1077E8",Egypt:"#CE1126",Ghana:"#007B3F","Ivory Coast":"#FF7900",Morocco:"#006233",Senegal:"#00853F","South Africa":"#007749",Tunisia:"#E70013","Curaçao":"#00248F",Haiti:"#00269A",Panama:"#0049A5",Argentina:"#6CA6DC",Brazil:"#1FAA52",Colombia:"#E0B100",Ecuador:"#E8A200",Paraguay:"#C8102E",Uruguay:"#0038A8","New Zealand":"#3A3A3A",Austria:"#ED2939",Belgium:"#C9A227","Bosnia and Herzegovina":"#1B3A8B",Croatia:"#D81E2C","Czech Republic":"#11457E",England:"#CF142B",France:"#21407F",Germany:"#3A3A3A",Netherlands:"#F36C21",Norway:"#BA0C2F",Portugal:"#0A6634",Scotland:"#005EB8",Spain:"#C60B1E",Sweden:"#D9A400",Switzerland:"#D52B1E",Turkey:"#E30A17"};
+function colorOf(t){ return TEAM_COLOR[t]||"#3b82f6"; }
+function txtOn(hex){ const n=parseInt(hex.slice(1),16); return (0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))>150?"#0e1b30":"#ffffff"; }
+function colDist(a,b){ const x=parseInt(a.slice(1),16),y=parseInt(b.slice(1),16); return Math.abs((x>>16)-(y>>16))+Math.abs(((x>>8)&255)-((y>>8)&255))+Math.abs((x&255)-(y&255)); }
 const el = (h) => { const d = document.createElement("div"); d.innerHTML = h.trim(); return d.firstChild; };
 
 /* ----------------------------- prediction math (mirrors simulate.py) ------- */
@@ -194,26 +198,27 @@ function predictScreen(){
          $("#selA").value="Argentina"; $("#selB").value="Brazil"; refreshStage(); runPredict(); }
 }
 function renderResult(r,ko,odds){
-  const {A,B}=r; let h="";
+  const {A,B}=r; let cA=colorOf(A),cB=colorOf(B); if(colDist(cA,cB)<90)cB="#f59e0b"; let h="";
   if(ko){
-    h+=`<div class="probbar"><div class="sA" style="width:${Math.max(2,r.advA)}%">${r.advA.toFixed(0)}%</div>
-        <div class="sB" style="width:${Math.max(2,r.advB)}%">${r.advB.toFixed(0)}%</div></div>
+    h+=`<div class="probbar"><div class="seg" style="width:${Math.max(2,r.advA)}%;background:${cA};color:${txtOn(cA)}">${r.advA.toFixed(0)}%</div>
+        <div class="seg" style="width:${Math.max(2,r.advB)}%;background:${cB};color:${txtOn(cB)}">${r.advB.toFixed(0)}%</div></div>
         <div class="big"><div><div class="n">${r.advA.toFixed(1)}%</div><div class="l">${flag(A)} ${A}</div></div>
         <div><div class="n">${r.advB.toFixed(1)}%</div><div class="l">${flag(B)} ${B}</div></div></div>
         <div class="xg">90 min: ${A} ${r.pA.toFixed(0)}% / draw ${r.pD.toFixed(0)}% / ${B} ${r.pB.toFixed(0)}% · extra time ${r.pET.toFixed(0)}% · penalties ${r.pPen.toFixed(1)}%</div>`;
   } else {
-    h+=`<div class="probbar"><div class="sA" style="width:${Math.max(3,r.pA)}%">${r.pA.toFixed(0)}%</div>
-        <div class="sD" style="width:${Math.max(3,r.pD)}%">${r.pD.toFixed(0)}%</div>
-        <div class="sB" style="width:${Math.max(3,r.pB)}%">${r.pB.toFixed(0)}%</div></div>
+    h+=`<div class="probbar"><div class="seg" style="width:${Math.max(3,r.pA)}%;background:${cA};color:${txtOn(cA)}">${r.pA.toFixed(0)}%</div>
+        <div class="seg sD" style="width:${Math.max(3,r.pD)}%">${r.pD.toFixed(0)}%</div>
+        <div class="seg" style="width:${Math.max(3,r.pB)}%;background:${cB};color:${txtOn(cB)}">${r.pB.toFixed(0)}%</div></div>
         <div class="big"><div><div class="n">${r.pA.toFixed(1)}%</div><div class="l">${flag(A)} ${A}</div></div>
         <div><div class="n">${r.pD.toFixed(1)}%</div><div class="l">draw</div></div>
         <div><div class="n">${r.pB.toFixed(1)}%</div><div class="l">${flag(B)} ${B}</div></div></div>`;
   }
-  h+=`<div class="xg">Expected goals — ${A} <b>${r.exA.toFixed(2)}</b> · ${B} <b>${r.exB.toFixed(2)}</b></div>`;
-  h+=`<div class="statline"><span>Both teams to score: <b>${r.btts.toFixed(0)}%</b></span>
-      <span>Clean sheet — ${A} <b>${r.csA.toFixed(0)}%</b></span><span>${B} <b>${r.csB.toFixed(0)}%</b></span></div>`;
+  h+=`<div class="pills"><span class="pillstat">Exp. goals <b>${r.exA.toFixed(2)}</b> – <b>${r.exB.toFixed(2)}</b></span>`+
+     `<span class="pillstat">Both score <b>${r.btts.toFixed(0)}%</b></span>`+
+     `<span class="pillstat">Clean sheet <b>${r.csA.toFixed(0)}%</b> / <b>${r.csB.toFixed(0)}%</b></span></div>`;
   h+=`<h4>Most likely scorelines</h4>`;
-  h+=r.top.map(s=>`<div class="scoreline"><span>${flag(A)} ${A} ${s.i} – ${s.j} ${B} ${flag(B)}</span><span class="p">${s.p.toFixed(1)}%</span></div>`).join("");
+  const tmax=Math.max.apply(null,r.top.map(s=>s.p))||1;
+  h+=r.top.map(s=>`<div class="scoreline"><span class="sl-teams">${flag(A)} <b>${s.i}</b>–<b>${s.j}</b> ${flag(B)}</span><span class="sl-bar"><i style="width:${(s.p/tmax*100).toFixed(0)}%"></i></span><span class="p">${s.p.toFixed(1)}%</span></div>`).join("");
   if(odds[0]>1&&odds[1]>1&&odds[2]>1){
     const raw=[1/odds[0],1/odds[1],1/odds[2]], ov=raw[0]+raw[1]+raw[2], mp=[r.pA/100,r.pD/100,r.pB/100], lab=[A,"Draw",B];
     h+=`<h4>Edge vs market (overround ${((ov-1)*100).toFixed(1)}%)</h4><table><tr><th>Outcome</th><th>Model</th><th>Mkt</th><th>Odds</th><th>EV</th></tr>`;
@@ -231,8 +236,8 @@ function groupsScreen(){
   sec.appendChild(el(`<div class="card"><h3>Group standings</h3><div class="mini">“Adv%” = chance to reach the knockouts (top 2 of the group, or one of the 8 best third-placed teams), from simulating every remaining group game.</div></div>`));
   const adv=groupAdvanceOdds();
   D.groups.forEach(g=>{
-    const rows=g.table.map(r=>{const s=T[r.team].stakes; const a=adv[r.team]??0;
-      return `<tr><td>${flag(r.team)} ${r.team} ${r.P>=2?stakeTag(s):''}</td><td>${r.P}</td><td><b>${r.pts}</b></td><td>${r.gf}-${r.ga}</td><td>${r.gd>=0?'+':''}${r.gd}</td><td class="adv">${a.toFixed(0)}%</td></tr>`;}).join("");
+    const rows=g.table.map((r,i)=>{const s=T[r.team].stakes; const a=adv[r.team]??0;
+      return `<tr class="${i<2?'adv-pos':''}"><td>${flag(r.team)} ${r.team} ${r.P>=2?stakeTag(s):''}</td><td>${r.P}</td><td><b>${r.pts}</b></td><td>${r.gf}-${r.ga}</td><td>${r.gd>=0?'+':''}${r.gd}</td><td class="adv">${a.toFixed(0)}%</td></tr>`;}).join("");
     const rem=g.remaining.length?`<div class="mini" style="margin-top:8px">Remaining: ${g.remaining.map(m=>m[0]+" v "+m[1]).join(" · ")}</div>`:`<div class="mini" style="margin-top:8px">Group complete</div>`;
     sec.appendChild(el(`<div class="card"><h3>${g.name}</h3>
       <table><tr><th>Team</th><th>P</th><th>Pts</th><th>GF-GA</th><th>GD</th><th>Adv%</th></tr>${rows}</table>${rem}</div>`));
@@ -307,7 +312,8 @@ function titleOddsScreen(){
   const note = P.group_complete ? "Qualified teams." : "Projected from current standings (group stage in progress)";
   const card=el(`<div class="card"><h3>Title odds</h3><div class="mini">${note} · rating-seeded 32-team bracket · ${N.toLocaleString()} simulations. A projection of who wins it all (not the official draw).</div><div id="ch"></div></div>`);
   sec.appendChild(card);
-  card.querySelector("#ch").innerHTML=rows.map(r=>`<div class="champ"><span>${flag(r.t)} ${r.t}</span><span style="text-align:right">
+  const medal=["🥇","🥈","🥉"];
+  card.querySelector("#ch").innerHTML=rows.map((r,i)=>`<div class="champ"><span>${medal[i]||""} ${flag(r.t)} ${r.t}</span><span style="text-align:right">
     <b>${r.c.toFixed(1)}%</b> <span class="mini">cup · ${r.f.toFixed(0)}% final</span>
     <div class="bar"><i style="width:${Math.min(100,r.c*2.5)}%"></i></div></span></div>`).join("");
 }

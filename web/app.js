@@ -115,7 +115,7 @@ function predictScreen(){
   const sec=document.getElementById("predict"); sec.innerHTML="";
   const opts=TEAMS.map(t=>`<option>${t}</option>`).join("");
   const fixtures=D.fixtures.filter(f=>f.status==="scheduled"&&T[f.home]&&T[f.away]);  // upcoming, in order
-  let idx=fixtures.length?0:-1;
+  let idx=fixtures.length?0:-1, fxVenue=null;
   const card=el(`<div class="card">
     <div class="navrow">
       <button class="navbtn" id="prevM">◀ Prev</button>
@@ -159,6 +159,7 @@ function predictScreen(){
     $("#stageNote").innerHTML = st==="group" ? `Group stage · ${A} ${stakeTag(T[A].stakes)} &nbsp; ${B} ${stakeTag(T[B].stakes)}`
       : st==="knockout" ? `<span class="tag ko">Knockout</span> extra time + penalties → who advances`
       : `Stage <b>unknown</b> (knockout bracket not set yet) — set "Knockout tie?" if this is a KO.`;
+    if(fxVenue){ $("#stageNote").innerHTML += ` <span class="vtag">📍 ${fxVenue.name}${fxVenue.alt>=500?' · '+fxVenue.alt+'m':''}${fxVenue.temp>=29?' · '+fxVenue.temp+'°C':''}</span>`; }
   }
   function runPredict(){
     const A=$("#selA").value,B=$("#selB").value;
@@ -168,7 +169,8 @@ function predictScreen(){
     let host=null; const vsel=$("#venue").value;
     if(vsel==="auto")host=hostOf(A,B); else if(vsel==="A")host=A; else if(vsel==="B")host=B;
     const o={knockout:ko,host:host,availA:+$("#avA").value/100,availB:+$("#avB").value/100,
-      restA:+$("#rA").value,restB:+$("#rB").value,weather:$("#wx").value,vTemp:$("#vt").value!==""?+$("#vt").value:null};
+      restA:+$("#rA").value,restB:+$("#rB").value,weather:$("#wx").value,
+      vTemp:$("#vt").value!==""?+$("#vt").value:(fxVenue?fxVenue.temp:null), vAlt:fxVenue?fxVenue.alt:null};
     if(!ko&&st==="group"){o.stakesA=T[A].stakes;o.stakesB=T[B].stakes;}
     $("#out").innerHTML=renderResult(predict(A,B,o),ko,[+$("#oA").value,+$("#oD").value,+$("#oB").value]);
   }
@@ -184,15 +186,17 @@ function predictScreen(){
   }
   function loadFixture(i){
     if(i<0||i>=fixtures.length) return;
-    idx=i; resetFactors(); $("#selA").value=fixtures[i].home; $("#selB").value=fixtures[i].away;
+    idx=i; resetFactors();
+    fxVenue = fixtures[i].valt!=null ? {alt:fixtures[i].valt,temp:fixtures[i].vtemp,name:fixtures[i].venue} : null;
+    $("#selA").value=fixtures[i].home; $("#selB").value=fixtures[i].away;
     syncNav(); refreshStage(); runPredict();
   }
   $("#prevM").onclick=()=>loadFixture(idx-1);
   $("#nextM").onclick=()=>loadFixture(idx+1);
-  $("#selA").onchange=()=>{idx=-1;syncNav();refreshStage();runPredict();};
-  $("#selB").onchange=()=>{idx=-1;syncNav();refreshStage();runPredict();};
+  $("#selA").onchange=()=>{idx=-1;fxVenue=null;syncNav();refreshStage();runPredict();};
+  $("#selB").onchange=()=>{idx=-1;fxVenue=null;syncNav();refreshStage();runPredict();};
   $("#go").onclick=runPredict;
-  window.predictMatchup=(A,B)=>{ resetFactors(); $("#selA").value=A; $("#selB").value=B; idx=-1; syncNav(); refreshStage(); runPredict(); };
+  window.predictMatchup=(A,B,ven)=>{ resetFactors(); fxVenue=ven||null; $("#selA").value=A; $("#selB").value=B; idx=-1; syncNav(); refreshStage(); runPredict(); };
   if(idx>=0){ loadFixture(0); }                       // auto-open the next fixture
   else { $("#prevM").style.display="none"; $("#nextM").style.display="none"; $("#mLabel").textContent="Pick any two teams";
          $("#selA").value="Argentina"; $("#selB").value="Brazil"; refreshStage(); runPredict(); }
@@ -275,13 +279,13 @@ function slateScreen(){
   up.forEach(f=>{
     if(f.date!==curDate){ curDate=f.date; list.appendChild(el(`<h4>${f.date}</h4>`)); }
     const A=f.home,B=f.away; if(!T[A]||!T[B])return;
-    const ko=f.stage==="knockout", host=hostOf(A,B), o={knockout:ko,host:host};
+    const ko=f.stage==="knockout", host=hostOf(A,B), o={knockout:ko,host:host,vTemp:f.vtemp??null,vAlt:f.valt??null};
     if(!ko&&f.stage==="group"){o.stakesA=T[A].stakes;o.stakesB=T[B].stakes;}
     const r=predict(A,B,o);
     const summary = ko ? `<span class="win">${r.advA>=r.advB?A:B}</span> ${Math.max(r.advA,r.advB).toFixed(0)}% adv`
       : `${A} ${r.pA.toFixed(0)} / D ${r.pD.toFixed(0)} / ${B} ${r.pB.toFixed(0)}`;
     const item=el(`<div class="slate-item" style="cursor:pointer"><div>${flag(A)} ${A} <span class="pill">v</span> ${flag(B)} ${B}${ko?' <span class="tag ko">KO</span>':''}</div><div class="pill">${summary} ›</div></div>`);
-    item.onclick=()=>{ if(window.predictMatchup){ window.predictMatchup(A,B); document.querySelector('nav button[data-tab="predict"]').click(); window.scrollTo(0,0); } };
+    item.onclick=()=>{ if(window.predictMatchup){ window.predictMatchup(A,B, f.valt!=null?{alt:f.valt,temp:f.vtemp,name:f.venue}:null); document.querySelector('nav button[data-tab="predict"]').click(); window.scrollTo(0,0); } };
     list.appendChild(item);
   });
 }
@@ -324,6 +328,12 @@ function setTheme(light){ document.body.classList.toggle("light",light);
   try{ localStorage.setItem("wc-theme",light?"light":"dark"); }catch(e){} }
 document.getElementById("themeBtn").onclick=()=>setTheme(!document.body.classList.contains("light"));
 try{ setTheme(localStorage.getItem("wc-theme")==="light"); }catch(e){}
+
+const infoModal=document.getElementById("infoModal");
+document.getElementById("infoBtn").onclick=()=>infoModal.classList.add("show");
+infoModal.onclick=(e)=>{ if(e.target===infoModal||e.target.classList.contains("modal-close")) infoModal.classList.remove("show"); };
+document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") infoModal.classList.remove("show"); });
+{ const sd=document.getElementById("srcDate"); if(sd) sd.textContent=P.generated; }
 
 const groupsComplete=P.group_complete;
 document.getElementById("tab2").textContent = groupsComplete ? "Bracket" : "Groups";

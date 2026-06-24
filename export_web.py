@@ -61,7 +61,18 @@ def stage_of(h, a):
 # --- xG for played matches ---------------------------------------------------
 XG_NAME = {"Cabo Verde": "Cape Verde", "Congo DR": "DR Congo", "Czechia": "Czech Republic",
            "Côte d'Ivoire": "Ivory Coast", "IR Iran": "Iran", "Türkiye": "Turkey", "USA": "United States"}
-mxg = {}; mstage = {}
+# 2026 host venues -> (altitude m, typical match-day temp C). Roofed/AC stadiums
+# get a comfortable temp (no heat penalty); altitude always applies.
+VENUE_COND = {"Mexico City":(2240,22),"Guadalajara":(1560,24),"Monterrey":(540,31),
+    "Dallas":(180,21),"Houston":(15,21),"Atlanta":(320,21),"Los Angeles":(30,23),
+    "Vancouver":(5,21),"Miami":(2,31),"Kansas City":(270,30),"New York":(10,26),
+    "Philadelphia":(10,27),"Boston":(30,24),"San Francisco":(5,22),"Seattle":(50,22),"Toronto":(80,24)}
+def venue_cond(stadium):
+    for k, (alt, temp) in VENUE_COND.items():
+        if stadium.startswith(k) or k in stadium: return {"alt": alt, "temp": temp, "name": k}
+    return None
+
+mxg = {}; mstage = {}; mvenue = {}
 try:
     for r in csv.DictReader(open(PROJ + r"\wc2026_xg.csv", encoding="utf-8")):
         h = XG_NAME.get(r["home_team_name"], r["home_team_name"])
@@ -69,6 +80,9 @@ try:
         key = (r["date"], frozenset((h, a)))
         if r.get("stage_name"):
             mstage[key] = r["stage_name"]
+        if r.get("stadium_name"):
+            vc = venue_cond(r["stadium_name"])
+            if vc: mvenue[key] = vc
         if r["status"] == "Completed" and r["home_xg"]:
             mxg[key] = {h: float(r["home_xg"]), a: float(r["away_xg"])}
 except FileNotFoundError:
@@ -76,15 +90,20 @@ except FileNotFoundError:
 
 # --- fixtures ----------------------------------------------------------------
 fixtures = []
+def venfields(key):
+    vc = mvenue.get(key)
+    return {"valt": vc["alt"] if vc else None, "vtemp": vc["temp"] if vc else None,
+            "venue": vc["name"] if vc else None}
 for (d, h, a, hs, as_) in played:
     key = (d, frozenset((h, a)))
     xg = mxg.get(key, {})
     fixtures.append({"date": d, "home": h, "away": a, "status": "played",
                      "hs": hs, "as": as_, "hxg": xg.get(h), "axg": xg.get(a),
-                     "stage": stage_of(h, a), "round": mstage.get(key)})
+                     "stage": stage_of(h, a), "round": mstage.get(key), **venfields(key)})
 for (d, h, a) in sched:
+    key = (d, frozenset((h, a)))
     fixtures.append({"date": d, "home": h, "away": a, "status": "scheduled",
-                     "stage": stage_of(h, a), "round": mstage.get((d, frozenset((h, a))))})
+                     "stage": stage_of(h, a), "round": mstage.get(key), **venfields(key)})
 fixtures.sort(key=lambda x: x["date"])
 generated = max((f["date"] for f in fixtures if f["status"] == "played"), default="")
 

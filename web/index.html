@@ -114,14 +114,55 @@ section.on{animation:fadein .28s ease}
 tr.adv-pos td{background:rgba(46,160,120,.12)}
 tr.adv-pos td:first-child{box-shadow:inset 3px 0 0 #2ea078}
 .navbtn{transition:transform .08s}
+.vtag{font-size:11px;color:var(--mut);white-space:nowrap}
+header{padding-right:96px}
+.infobtn{position:absolute;top:12px;right:56px;width:34px;height:34px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:var(--headtxt);border-radius:10px;font-size:17px;cursor:pointer;line-height:1}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:flex-start;justify-content:center;z-index:30;padding:18px;overflow-y:auto}
+.modal.show{display:flex}
+.modal-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:560px;width:100%;padding:18px 20px 24px;margin:auto;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.modal-card h2{margin:0 0 6px;font-size:18px;padding-right:70px}
+.modal-card h3{font-size:12px;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 6px}
+.modal-card p{font-size:13.5px;line-height:1.55;margin:6px 0}
+.modal-card ul{margin:6px 0;padding-left:0;list-style:none}
+.modal-card li{font-size:13.5px;line-height:1.5;margin:7px 0}
+.modal-close{float:right;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 11px;cursor:pointer;font-weight:700;font-size:12.5px}
+.src-note{color:var(--mut);font-size:12px;margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 </style>
 </head>
 <body>
 <header>
   <h1><img src="icon.svg" alt="" class="applogo">World Cup 2026 Predictor</h1>
   <div class="sub" id="subtitle">loading…</div>
+  <button class="infobtn" id="infoBtn" title="How it works & sources">&#9432;</button>
   <button class="themetoggle" id="themeBtn" title="Toggle light/dark">🌙</button>
 </header>
+
+<div class="modal" id="infoModal">
+  <div class="modal-card">
+    <button class="modal-close">✕ Close</button>
+    <h2>How this works &amp; where the data comes from</h2>
+    <p>An independent data model that simulates each match many times to estimate win/draw odds, expected goals, and likely scorelines. Built for insight and fun — not betting advice, and never a certainty (football is famously unpredictable).</p>
+    <h3>The method</h3>
+    <p>Every team gets an <b>attack</b> and <b>defense</b> rating. For a match, those become each side's expected goals, and a <b>Poisson model with the Dixon-Coles correction</b> (a standard football-analytics method) turns them into probabilities and scorelines. Knockouts add extra time + penalties; weaker teams are modelled as more volatile.</p>
+    <h3>Where the data comes from</h3>
+    <ul>
+      <li>⚽ <b>Match results</b> — every international since 1872, weighted toward recent games.</li>
+      <li>🎯 <b>Expected goals (xG)</b> — shot-quality data from <b>StatsBomb</b> (recent World Cups, Euros, Copa América, AFCON) plus this tournament's xG. Current World Cup games count extra.</li>
+      <li>💰 <b>Squad value</b> — each team's player market value (Transfermarkt) — the talent on the pitch.</li>
+      <li>📊 <b>Elo &amp; FIFA ranking</b> — long-run strength and the official ranking.</li>
+      <li>🌎 <b>Match context</b> — stadium altitude / heat / roof, rest days, and whether a team is already through or must win (an effect measured from 300+ past matches).</li>
+      <li>🔄 <b>Auto-updated</b> twice a day with the latest results — data through <span id="srcDate">—</span>.</li>
+    </ul>
+    <h3>What each tab shows</h3>
+    <ul>
+      <li><b>Predict</b> — the match estimate, expected goals, and most likely scorelines.</li>
+      <li><b>Groups</b> — live standings and each team's chance to reach the knockouts.</li>
+      <li><b>Fixtures</b> — every upcoming match, auto-predicted.</li>
+      <li><b>Title odds</b> — a projection of who wins it all (a rating-seeded simulation, not the official bracket).</li>
+    </ul>
+    <p class="src-note">Backtested on 370+ past matches and competitive with bookmaker accuracy. The model is independent of betting markets — it only uses odds to flag where it sees value.</p>
+  </div>
+</div>
 <nav>
   <button data-tab="predict" class="on">Predict</button>
   <button data-tab="groups" id="tab2">Groups</button>

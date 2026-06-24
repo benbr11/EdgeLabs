@@ -294,6 +294,20 @@ D_star = {t: (G_star[t] - tilt[t]) / 2 for t in TEAMS}   # final defense log-str
 att_mult = {t: math.exp(A_star[t]) for t in TEAMS}        # used by the simulator
 dfn_mult = {t: math.exp(-D_star[t]) for t in TEAMS}       # <1 = good defense
 
+# --- ABSOLUTE GOAL-LEVEL calibration ----------------------------------------
+# Geometric-mean-normalised multipliers leave the ARITHMETIC mean of att*dfn above 1
+# (Jensen), so the average predicted total sits ~20% above reality -> inflated
+# totals/BTTS/over-under (W/D/L is unaffected, it depends on the att/dfn RATIO).
+# Rescale BOTH multipliers equally so the average lambda over all pairings == AVG.
+# This preserves every matchup's ratio (W/D/L, player-odds scale) and only fixes the level.
+import itertools as _it
+_mean_adp = sum(att_mult[a]*dfn_mult[b] for a, b in _it.permutations(TEAMS, 2)) / (len(TEAMS)*(len(TEAMS)-1))
+_k = _mean_adp ** 0.5
+for t in TEAMS:
+    att_mult[t] /= _k; dfn_mult[t] /= _k
+print(f"Goal-level calibration: mean(att*dfn) {_mean_adp:.3f} -> 1.000 (rescaled /{_k:.4f}); "
+      f"avg total now ~{2*AVG*sum(att_mult[a]*dfn_mult[b] for a,b in _it.permutations(TEAMS,2))/(len(TEAMS)*(len(TEAMS)-1)):.2f}")
+
 # human-readable 0-100 (logistic on within-field z of the log-strengths)
 zA = zscores(A_star); zD = zscores(D_star)
 def to100(z): return round(100.0 / (1.0 + math.exp(-1.15 * z)), 2)

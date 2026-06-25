@@ -24,7 +24,11 @@ for r in csv.DictReader(open(PROJ + r"\nhl_ratings.csv", encoding="utf-8")):
                 "att100": float(r["attack_100"]), "def100": float(r["defense_100"]),
                 "elo": round(float(r["elo"])), "xgf": float(r["xgf_pg"]), "xga": float(r["xga_pg"]),
                 "gsax": float(r["gsax_per_shot"]), "pp": float(r["pp_pct"]), "pk": float(r["pk_pct"])}
-    params = {"avg": float(r["avg_goals"]), "home_adv": float(r["home_adv"]), "sog": 29.0}
+    # winprob_temp: logit temperature that softens the systematically overconfident raw
+    # Poisson favourite win-prob (calibrated on the OOS walk-forward backtest; see
+    # nhl_predict.py WINPROB_TEMP). 1.0 = off; 2.0 = production-calibrated.
+    params = {"avg": float(r["avg_goals"]), "home_adv": float(r["home_adv"]), "sog": 29.0,
+              "winprob_temp": 2.0}
 
 goalies = []
 try:

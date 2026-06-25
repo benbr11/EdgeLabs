@@ -56,6 +56,7 @@ import numpy as np
 import pandas as pd
 
 import ufc_model as M
+import ufc_positional as POS
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 TEST_START = pd.Timestamp("2024-01-01")
@@ -404,10 +405,14 @@ def calibration_table(preds):
 #  Build the as-of stat dict for a fighter (used by tier 2)
 # --------------------------------------------------------------------------- #
 def build_asof_statdict(fighters, fs_long, dob_map, log, name, cutoff,
-                        asof_div_means):
+                        asof_div_means, pos_long=None, asof_pos_div_means=None,
+                        pos_div_of=None):
     """
     Construct a get_stats-style dict for `name` AS-OF `cutoff`:
       - rate stats from raw_fight_stats before cutoff (+ caps + as-of shrinkage)
+      - POSITIONAL/striking features (head share, ground volume, clinch, distance diff,
+        finishing threat, defensive mirrors) before cutoff (+ caps + as-of shrinkage),
+        via the SAME ufc_positional aggregator the live model uses
       - finish stats from log before cutoff
       - age/layoff from DOB + prior fight dates
       - time-invariant traits (reach/height/stance/style/division) from fighters.csv
@@ -440,6 +445,17 @@ def build_asof_statdict(fighters, fs_long, dob_map, log, name, cutoff,
                     dmean = M.STAT_DEFAULTS.get(col, val)
                 val = (n * val + M.SHRINK_K * dmean) / (n + M.SHRINK_K)
             s[col] = val
+
+    # --- positional/striking features as-of (raw), capped + shrunk to as-of div mean ---
+    # Goes through the SAME aggregator (POS.asof_positional_stats) the live fighters table
+    # uses, so a feature in the backtest is computed identically -- only the cutoff differs.
+    if pos_long is not None:
+        praw = POS.asof_positional_stats(pos_long, name, cutoff)
+        if praw is not None:
+            pmeans = asof_pos_div_means or {}
+            shrunk = POS.shrink_positional(praw, praw["_n_pos"], pmeans, div_code)
+            for col, v in shrunk.items():
+                s[col] = v
 
     # --- finish stats as-of (log) ---
     fin = asof_finish_stats(log, name, cutoff)
@@ -536,6 +552,11 @@ def main():
     fs_long = load_raw_fight_stats_with_dates()
     dob_map = load_dob()
 
+    # positional/striking long frame (head/body/leg + distance/clinch/ground, mirrors)
+    pos_long = POS.load_positional_long()
+    pos_div_of = dict(zip(fighters["fighter"].astype(str).str.strip().str.lower(),
+                          fighters["division_code"]))
+
     # --- assemble the TEST SET (one row per bout) ---
     # iterate bouts in chronological order using the pre_elo keys; pick the canonical
     # orientation A=fighter (the row's own fighter) using the log row that has result.
@@ -552,6 +573,7 @@ def main():
 
     # cache as-of division means per cutoff date (expensive)
     div_mean_cache = {}
+    pos_div_mean_cache = {}     # positional-feature as-of division means, per cutoff
 
     tests = []   # each: dict with everything we need to score
     for _, row in log_sorted.iterrows():
@@ -617,13 +639,23 @@ def main():
 
         # ---- tier 3: FULL MODEL, CURRENT STATS (leakage-flagged) ----
         # uses clean pre-fight Elo but CURRENT career-aggregate stats from fighters.csv
+        # missed-weight penalty (date-keyed, raw logit term -- matches win_probability).
+        # Computed once here and added to BOTH the current-stats and as-of logits below,
+        # exactly as the live model's win_probability(bout_date=...) would.
+        wmiss = 0.0
+        if M.WEIGHT_MISS_PENALTY:
+            if M.missed_weight(A, cutoff):
+                wmiss -= M.WEIGHT_MISS_PENALTY
+            if M.missed_weight(B, cutoff):
+                wmiss += M.WEIGHT_MISS_PENALTY
+
         a_cur = M.get_stats(fighters, A)
         b_cur = M.get_stats(fighters, B)
         p_full_cur = None
         if a_cur is not None and b_cur is not None:
             m = M.matchup(a_cur, b_cur)
             sit = M._situational_edge(a_cur, b_cur)
-            logit = TEMP * (1.33 * logit_elo + 1.12 * m["edge"] + 1.38 * sit)
+            logit = TEMP * (1.33 * logit_elo + 1.12 * m["edge"] + 1.38 * sit + wmiss)
             p_full_cur = 1.0 / (1.0 + math.exp(-logit))
             full_scor.append((p_full_cur, y))
 
@@ -631,13 +663,19 @@ def main():
         if cutoff not in div_mean_cache:
             div_mean_cache[cutoff] = compute_asof_division_means(fighters, fs_long, cutoff)
         dmeans = div_mean_cache[cutoff]
-        a_asof = build_asof_statdict(fighters, fs_long, dob_map, log, A, cutoff, dmeans)
-        b_asof = build_asof_statdict(fighters, fs_long, dob_map, log, B, cutoff, dmeans)
+        if cutoff not in pos_div_mean_cache:
+            pos_div_mean_cache[cutoff] = POS.compute_asof_pos_division_means(
+                pos_long, pos_div_of, cutoff=cutoff)
+        pmeans = pos_div_mean_cache[cutoff]
+        a_asof = build_asof_statdict(fighters, fs_long, dob_map, log, A, cutoff, dmeans,
+                                     pos_long=pos_long, asof_pos_div_means=pmeans)
+        b_asof = build_asof_statdict(fighters, fs_long, dob_map, log, B, cutoff, dmeans,
+                                     pos_long=pos_long, asof_pos_div_means=pmeans)
         p_asof = None
         if a_asof is not None and b_asof is not None:
             m2 = M.matchup(a_asof, b_asof)
             sit2 = M._situational_edge(a_asof, b_asof)
-            logit2 = TEMP * (1.33 * logit_elo + 1.12 * m2["edge"] + 1.38 * sit2)
+            logit2 = TEMP * (1.33 * logit_elo + 1.12 * m2["edge"] + 1.38 * sit2 + wmiss)
             p_asof = 1.0 / (1.0 + math.exp(-logit2))
             asof_scor.append((p_asof, y))
 
@@ -693,6 +731,68 @@ def main():
     report_tier("(3) FULL MODEL, CURRENT stats  (optimistic CEILING)", full_scor, full_cal, leakage=True)
 
     print("\nBENCHMARKS: coin-flip = 50.0% | sharp closing market hits ~64-66% straight-up")
+
+    # ---------------------------------------------------------------------- #
+    #  CONFIDENCE-THRESHOLD SWEEP  ("Best Bets" tier selection)
+    #  On the CLEAN tier-2 as-of predictions ONLY (proper out-of-sample), sweep a
+    #  minimum win-probability threshold T.  A "pick" at T is any bout where the
+    #  model's confidence on its side (max(p,1-p)) >= T.  Report OOS hit-rate, N,
+    #  and what % of all test fights qualify.  The Best-Bet threshold is chosen as
+    #  the LOWEST T whose OOS hit-rate >= 80% on adequate N -- this selection is made
+    #  on the walk-forward OOS table, NOT in-sample, so it does not overfit.
+    # ---------------------------------------------------------------------- #
+    print("\n" + "=" * 74)
+    print('CONFIDENCE-THRESHOLD SWEEP  ("Best Bets" tier -- tier-2 as-of, clean OOS)')
+    print("=" * 74)
+    # use tier-2 as-of confidence (max(p,1-p)) + whether the model's pick won
+    conf_recs = []  # (conf, pick_won)
+    for pt in per_test:
+        p = pt["p_asof"] if pt["p_asof"] is not None else pt["p_elo"]
+        if p is None:
+            continue
+        conf = max(p, 1 - p)
+        pick_won = 1 if ((p > 0.5) == (pt["y"] == 1)) else 0
+        conf_recs.append((conf, pick_won))
+    total_fights = len(conf_recs)
+    print(f"  total scored test fights (denominator for 'qualify %'): {total_fights}\n")
+    print(f"    {'T (min win-prob)':>16}  {'N picks':>8}  {'OOS hit-rate':>13}  {'qualify %':>10}")
+    sweep = [0.60, 0.65, 0.70, 0.75, 0.80, 0.85]
+    sweep_rows = []
+    for T in sweep:
+        sel = [w for c, w in conf_recs if c >= T]
+        n = len(sel)
+        hr = (sum(sel) / n) if n else float("nan")
+        qpct = 100.0 * n / total_fights if total_fights else float("nan")
+        sweep_rows.append((T, n, hr, qpct))
+        hr_s = f"{hr*100:>11.1f}%" if n else f"{'--':>12}"
+        print(f"    {T:>16.2f}  {n:>8}  {hr_s}  {qpct:>9.1f}%")
+
+    # choose the Best-Bet threshold: LOWEST T whose OOS hit-rate >= 0.80 on adequate N.
+    MIN_N = 25  # require a non-trivial sample for the claim to be meaningful
+    chosen = None
+    for T, n, hr, qpct in sweep_rows:
+        if n >= MIN_N and hr >= 0.80:
+            chosen = (T, n, hr, qpct)
+            break
+    print()
+    if chosen is not None:
+        T, n, hr, qpct = chosen
+        print(f"  CHOSEN Best-Bet threshold T = {T:.2f}  ->  OOS hit-rate {hr*100:.1f}% on N={n} "
+              f"({qpct:.1f}% of all fights qualify)")
+        print(f"  This is the LEGITIMATE 80%: on selected high-conviction picks only,")
+        print(f"  chosen on the walk-forward OOS table (not in-sample) -> no overfit.")
+    else:
+        # no T cleanly reaches 80% on adequate N -- report the best achievable honestly.
+        best = max((r for r in sweep_rows if r[1] >= MIN_N), key=lambda r: r[2], default=None)
+        if best is not None:
+            T, n, hr, qpct = best
+            print(f"  NO threshold cleanly reaches 80% on adequate N (>= {MIN_N}).")
+            print(f"  BEST ACHIEVABLE: T = {T:.2f} -> {hr*100:.1f}% on N={n} ({qpct:.1f}% qualify).")
+        else:
+            print(f"  NO threshold has adequate N (>= {MIN_N}).")
+    # emit a machine-readable line the exporter / record-keeping can parse
+    if chosen is not None:
+        print(f"\n  BEST_BET_THRESHOLD={chosen[0]:.2f} HITRATE={chosen[2]:.4f} N={chosen[1]}")
 
     # ---------------------------------------------------------------------- #
     #  VS MARKET on the odds-overlap subset

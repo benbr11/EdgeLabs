@@ -25,6 +25,24 @@ except FileNotFoundError:
     pass
 SOG = 29.0   # ~shots on goal a goalie faces per game (scales the goalie's per-shot GSAx to goals)
 
+# Probability recalibration. The raw Poisson favourite win-probabilities were found to be
+# systematically OVERCONFIDENT at every tier in the honest walk-forward backtest
+# (backtest_nhl.py, n=2792 OOS games): e.g. the 80-100% bucket won only ~68%, the 70-80%
+# bucket ~64%. Hockey is the highest-variance major sport, so the true favourite edge is
+# smaller than a deterministic Poisson implies. We soften winH with a LOGIT TEMPERATURE
+# (monotonic, centred on 0.5: a coin-flip stays a coin-flip, ordering/SU hit-rate is
+# preserved, only the SCALE shrinks toward 0.5). T=2.0 minimises both Brier and log-loss
+# on the OOS backtest while leaving the straight-up hit-rate unchanged (~55.5%).
+WINPROB_TEMP = 2.0
+
+def recalibrate(p, T=WINPROB_TEMP):
+    """Soften an over-confident win prob toward 0.5 via a logit temperature (T>1)."""
+    if T == 1.0:
+        return p
+    p = min(max(p, 1e-9), 1 - 1e-9)
+    z = math.log(p / (1 - p)) / T
+    return 1.0 / (1.0 + math.exp(-z))
+
 def rest_factor(days):
     # 2nd night of a back-to-back (0-1 days) hurts; well-rested (3+) is neutral-to-fresh
     if days is None: return 1.0
@@ -65,6 +83,7 @@ def predict(home, away, goalieH=None, goalieA=None, restH=2, restA=2,
             if i - j >= 2: pl_home += m      # home covers -1.5 puck line
     fav = pH / (pH + pA) if pH + pA else 0.5
     winH = pH + pT * (0.5 + (fav - 0.5) * 0.35)    # ties -> OT/SO, slight favourite edge
+    winH = recalibrate(winH)                       # soften OOS-overconfident scale toward 0.5
     return {"lh": lh, "la": la, "winH": winH, "winA": 1 - winH, "regH": pH, "regT": pT, "regA": pA,
             "over": over, "pl_home": pl_home}
 

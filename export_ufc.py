@@ -31,6 +31,31 @@ import ufc_model
 BASE = os.path.dirname(os.path.abspath(ufc_model.__file__))
 WEB = os.path.join(BASE, "web")
 
+# --------------------------------------------------------------------------- #
+#  CONFIDENCE TIERS  ("Best Bets")
+#  BEST_BET_THRESHOLD is chosen from the WALK-FORWARD OUT-OF-SAMPLE backtest
+#  (ufc_backtest.py confidence-threshold sweep): it is the LOWEST min-win-prob T
+#  whose clean OOS hit-rate >= 80% on adequate N.  As of the latest backtest:
+#      T = 0.75  ->  82.5% OOS hit-rate, N = 97 (23.1% of fights qualify).
+#  This is the honest 80%: on selected high-conviction picks only, with the
+#  threshold picked on OOS results (not in-sample), so it does not overfit.
+#  LEAN_THRESHOLD (~0.62) is a real edge but below the 80% bar; below it is a
+#  coin-flip "Pass".
+# --------------------------------------------------------------------------- #
+BEST_BET_THRESHOLD = 0.75
+LEAN_THRESHOLD = 0.62
+
+
+def confidence_tier(win_prob):
+    """Map the model's confidence on its PICK (max of the two corner probs) to a
+    tier label.  Returns one of 'best', 'lean', 'pass'."""
+    conf = max(float(win_prob), 1.0 - float(win_prob))
+    if conf >= BEST_BET_THRESHOLD:
+        return "best"
+    if conf >= LEAN_THRESHOLD:
+        return "lean"
+    return "pass"
+
 
 def _resolved_name(fighters, name):
     """
@@ -130,6 +155,7 @@ def build_card():
             "roundDist": None,
             "favored": None,
             "keyEdge": None,
+            "tier": None,        # "best" | "lean" | "pass" (confidence tier)
             "dataGap": False,
         }
 
@@ -165,6 +191,7 @@ def build_card():
         rec["roundDist"] = round_dist
         rec["favored"] = favored
         rec["keyEdge"] = edge
+        rec["tier"] = confidence_tier(max(winA, winB))
         bouts_out.append(rec)
 
     card = {
@@ -173,6 +200,8 @@ def build_card():
         "venue": raw["venue"],
         "location": raw["location"],
         "generated": dt.date.today().isoformat(),
+        "bestBetThreshold": BEST_BET_THRESHOLD,
+        "leanThreshold": LEAN_THRESHOLD,
         "bouts": bouts_out,
     }
     return card

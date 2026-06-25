@@ -4,6 +4,12 @@
   if(!window.NHL_DATA){ return; }
   const D=window.NHL_DATA, P=D.params, T=D.teams, SOG=P.sog||29;
   const $=id=>document.getElementById(id);
+  // Win-prob recalibration: the raw Poisson favourite probs are systematically
+  // overconfident OOS (walk-forward backtest), so soften them with a logit temperature
+  // (centred on 0.5; ordering preserved). winprob_temp comes from nhl_data.js (2.0).
+  const WP_TEMP=P.winprob_temp||1;
+  const recalib=p=>{ if(WP_TEMP===1)return p; p=Math.min(Math.max(p,1e-9),1-1e-9);
+    return 1/(1+Math.exp(-Math.log(p/(1-p))/WP_TEMP)); };
   const teamsByRating=Object.keys(T).sort((a,b)=>(T[b].att100+T[b].def100)-(T[a].att100+T[a].def100));
   const GByTeam={}, GMAP={};
   (D.goalies||[]).forEach(g=>{ GMAP[g.n]=g; (GByTeam[g.team]=GByTeam[g.team]||[]).push(g); });
@@ -35,7 +41,7 @@
       if(i>j)pH+=m; else if(i===j)pT+=m; else pA+=m;
       if(i+j>5.5)o55+=m; if(i+j>6.5)o65+=m; if(i-j>=2)pl+=m;
       if(i<9&&j<9)cells.push([m,i,j]); }
-    const fav=(pH+pA)?pH/(pH+pA):0.5; const winH=pH+pT*(0.5+(fav-0.5)*0.35);
+    const fav=(pH+pA)?pH/(pH+pA):0.5; const winH=recalib(pH+pT*(0.5+(fav-0.5)*0.35));
     cells.sort((x,y)=>y[0]-x[0]);
     return {lh,la,winH,winA:1-winH,regH:pH,regOT:pT,regA:pA,o55,o65,pl,
             top:cells.slice(0,3).map(c=>({p:c[0]*100,i:c[1],j:c[2]}))};

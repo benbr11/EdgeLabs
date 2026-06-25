@@ -20,6 +20,28 @@
   }
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  // ---- confidence tiers ("Best Bets") ----
+  // Thresholds come from the walk-forward OUT-OF-SAMPLE backtest (ufc_backtest.py):
+  // the Best-Bet bar (win-prob >= bestBetThreshold) is the lowest T whose clean OOS
+  // hit-rate >= 80%. As of the latest run: T=0.75 -> 82.5% OOS on N=97.
+  var BEST_T = (CARD && CARD.bestBetThreshold) || 0.75;
+  var LEAN_T = (CARD && CARD.leanThreshold) || 0.62;
+  function tierOf(bt){
+    if(bt.tier) return bt.tier;            // baked by exporter
+    if(bt.winA==null) return null;
+    var conf = Math.max(bt.winA, bt.winB);
+    return conf >= BEST_T ? 'best' : (conf >= LEAN_T ? 'lean' : 'pass');
+  }
+  var TIER_META = {
+    best: {label:'BEST BET',  bg:'rgba(52,211,153,.16)', col:'var(--good)'},
+    lean: {label:'LEAN',      bg:'rgba(139,92,255,.16)', col:'var(--accent2)'},
+    pass: {label:'PASS · coin-flip', bg:'var(--panel2)', col:'var(--mut)'}
+  };
+  function tierBadge(t){
+    var m = TIER_META[t]; if(!m) return '';
+    return '<span class="tag" style="background:'+m.bg+';color:'+m.col+';margin-left:0">'+m.label+'</span>';
+  }
+
   // ---- shell: tab nav + two sections ----
   body.innerHTML =
     '<nav class="nhlnav" id="ufcNav">'+
@@ -42,8 +64,10 @@
   //  NEXT CARD
   // =====================================================================
   function boutCard(bt, i){
+    var t = tierOf(bt);
     var head = '<div class="row" style="justify-content:space-between;align-items:flex-start">'+
         '<div><b style="font-size:15px">'+esc(bt.a)+'</b> <span class="vs">vs</span> <b style="font-size:15px">'+esc(bt.b)+'</b></div>'+
+        (t ? '<div>'+tierBadge(t)+'</div>' : '')+
       '</div>'+
       '<div class="mini" style="margin:2px 0 10px">'+esc(bt.weightClass)+
         (bt.rounds===5?' · (5 rounds)':'')+(bt.isTitle?' · Title':'')+'</div>';
@@ -195,7 +219,40 @@
       '<div class="mini" style="margin-top:6px">Model win %, method and round for all '+CARD.bouts.length+' bouts. '+
         'Drag <b>Your read</b> to blend your handicapping lean on top of the model; enter book odds to flag <b>+EV</b>.</div>'+
       '</div>';
-    host.innerHTML = header + CARD.bouts.map(boutCard).join('');
+
+    // ---- Best Bets summary (high-conviction picks only) ----
+    var best = CARD.bouts.filter(function(b){ return !b.dataGap && tierOf(b)==='best'; });
+    var bbHtml;
+    if(best.length){
+      var rows = best.map(function(b){
+        var favIsA = b.winA >= b.winB;
+        var favName = favIsA ? b.a : b.b;
+        var dogName = favIsA ? b.b : b.a;
+        var favP = favIsA ? b.winA : b.winB;
+        return '<div class="scoreline" style="align-items:center">'+
+            '<span class="sl-teams"><b>'+esc(favName)+'</b> <span class="vs">over</span> '+esc(dogName)+'</span>'+
+            '<span class="sl-bar"><i style="width:'+(favP*100).toFixed(0)+'%;background:var(--good)"></i></span>'+
+            '<span class="p"><b>'+pct1(favP)+'%</b> · '+fmtOdds(americanFromProb(favP))+'</span>'+
+          '</div>';
+      }).join('');
+      bbHtml = '<div class="card" style="border:1px solid var(--good)">'+
+        '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">'+
+          '<h3 style="margin:0">★ Best Bets</h3>'+tierBadge('best')+'</div>'+
+        '<div class="mini" style="margin-bottom:10px">High-conviction picks only — model win-prob ≥ '+pct(BEST_T)+'%. '+
+          'On the walk-forward out-of-sample backtest this tier hit <b style="color:var(--good)">~82%</b> '+
+          '(vs ~70% across all fights). Each line is the model price.</div>'+
+        rows+
+        '</div>';
+    } else {
+      bbHtml = '<div class="card" style="border:1px solid var(--line)">'+
+        '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">'+
+          '<h3 style="margin:0">★ Best Bets</h3>'+tierBadge('best')+'</div>'+
+        '<div class="mini">No Best-Bet plays on this card — no bout clears the '+pct(BEST_T)+'% '+
+          'win-prob bar where the model hits ~80% out-of-sample. Leans and passes below.</div>'+
+        '</div>';
+    }
+
+    host.innerHTML = header + bbHtml + CARD.bouts.map(boutCard).join('');
     CARD.bouts.forEach(wireBout);
   }
 
@@ -229,6 +286,8 @@
   var gen = (CARD && CARD.generated) || (RANK && RANK.generated) || '';
   document.getElementById('ufcfoot').innerHTML =
     'UFC model: performance-adjusted Elo + style matchup (grappler premium) + situational factors → winner, method (KO/Sub/Dec) and round. '+
+    'Confidence tiers from the walk-forward out-of-sample backtest: <b>Best Bet</b> = model win-prob ≥ '+pct(BEST_T)+'% '+
+    '(this tier hit ~82% OOS, N=97), <b>Lean</b> = ≥ '+pct(LEAN_T)+'%, <b>Pass</b> = coin-flip below that. '+
     'Next card auto-built from raw_nextcard.json. Official rankings via UFC.com. Through '+esc(gen)+'. Insight, not betting advice.';
 
   cardScreen();

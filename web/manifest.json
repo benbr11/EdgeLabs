@@ -1,10 +1,14 @@
 {
-  "name": "EdgeLab — Multi-Sport Predictions",
-  "short_name": "EdgeLab",
+  "name": "EdgeLabs — Multi-Sport Predictions",
+  "short_name": "EdgeLabs",
   "start_url": "index.html",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0b1220",
+  "background_color": "#080b12",
   "theme_color": "#4f8cff",
-  "icons": [{ "src": "edgelab-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "icons": [
+    { "src": "edgelab-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "edgelab-icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "edgelab-icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
 }

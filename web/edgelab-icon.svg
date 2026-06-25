@@ -1,6 +1,15 @@
-<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-  <defs><linearGradient id="eg" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#8a5cff"/></linearGradient></defs>
-  <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#eg)"/>
-  <path d="M28 9 L14 26 L23 26 L20 39 L34 22 L25 22 Z" fill="#fff"/>
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#8a5cff"/></linearGradient>
+    <linearGradient id="liq" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b9bff"/><stop offset="1" stop-color="#8a5cff"/></linearGradient>
+  </defs>
+  <rect x="2" y="2" width="96" height="96" rx="22" fill="#0a0e16"/>
+  <!-- E (chevron) -->
+  <path d="M44 28 H27 M44 50 H31 M44 72 H27 M27 28 L17 50 L27 72" fill="none" stroke="url(#g)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- L beaker -->
+  <path d="M59 30 H73 q4 0 4 4 V58 H86 q4 0 4 4 V73 q0 4 -4 4 H59 q-4 0 -4 -4 V34 q0 -4 4 -4 Z" fill="#14203c"/>
+  <path d="M55 54 q5.5 -3.5 11 0 q5.5 3.5 11 0 V58 H86 q4 0 4 4 V73 q0 4 -4 4 H59 q-4 0 -4 -4 Z" fill="url(#liq)"/>
+  <path d="M59 30 H73 q4 0 4 4 V58 H86 q4 0 4 4 V73 q0 4 -4 4 H59 q-4 0 -4 -4 V34 q0 -4 4 -4 Z" fill="none" stroke="url(#g)" stroke-width="3"/>
+  <path d="M53 30 H79" stroke="url(#g)" stroke-width="4.5" stroke-linecap="round"/>
+  <circle cx="66" cy="39" r="2.4" fill="#9cc2ff"/><circle cx="63" cy="47" r="1.7" fill="#9cc2ff"/>
 </svg>

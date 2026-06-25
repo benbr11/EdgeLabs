@@ -225,6 +225,7 @@ header{padding-right:96px}
     <button class="sporttile" data-goto="mlb"><span class="tileicon">⚾</span><span class="tilename">MLB</span><span class="tilemeta">Baseball · live model</span></button>
     <button class="sporttile" data-goto="ufc"><span class="tileicon">🥊</span><span class="tilename">UFC</span><span class="tilemeta">Rankings · live</span></button>
   </div>
+  <button data-goto="accuracy" style="display:block;width:100%;margin-top:14px;padding:14px 16px;border:1px solid var(--accent);border-radius:14px;background:var(--panel);color:var(--txt);cursor:pointer;font-size:14px;font-weight:600;text-align:center">📊 Model Accuracy — how we stack up vs Vegas →</button>
 </div>
 
 <div id="soccer-hub" class="home">
@@ -378,6 +379,10 @@ header{padding-right:96px}
   <div class="sporthead"><button class="backbtn" data-goto="home">← Sports</button><h2>🥊 UFC</h2></div>
   <div id="ufc-body"></div>
 </div>
+<div id="app-accuracy" class="sportapp">
+  <div class="sporthead"><button class="backbtn" data-goto="home">← Sports</button><h2>📊 Model Accuracy</h2></div>
+  <main><div id="accuracy-body"></div></main>
+</div>
 
 <script src="data.js"></script>
 <script src="nhl_data.js"></script>
@@ -392,9 +397,10 @@ header{padding-right:96px}
 <script src="leagues_app.js"></script>
 <script src="prosports_app.js"></script>
 <script src="ufc_app.js"></script>
+<script src="accuracy_app.js"></script>
 <script>
 (function(){
-  var ids={home:'home','soccer-hub':'soccer-hub',soccer:'app-soccer',nhl:'app-nhl',league:'app-league',nfl:'app-nfl',nba:'app-nba',mlb:'app-mlb',ufc:'app-ufc'};
+  var ids={home:'home','soccer-hub':'soccer-hub',soccer:'app-soccer',nhl:'app-nhl',league:'app-league',nfl:'app-nfl',nba:'app-nba',mlb:'app-mlb',ufc:'app-ufc',accuracy:'app-accuracy'};
   function show(v){ if(!ids[v])v='home';
     for(var k in ids){ var e=document.getElementById(ids[k]); if(e)e.classList.toggle('on',k===v); }
     history.replaceState(null,'','#'+v); scrollTo(0,0); }

@@ -13,7 +13,7 @@ HALFLIFE = 400.0; RHO = -0.12
 def get(url, t=30):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     return urllib.request.urlopen(req, timeout=t).read().decode("utf-8", "replace")
-def euro_seasons(n=3, today=None):                    # football-data season codes, newest first
+def euro_seasons(n=6, today=None):                    # football-data season codes, newest first
     d = today or datetime.date.today(); sy = d.year if d.month >= 7 else d.year - 1
     return [f"{str(y)[2:]}{str(y+1)[2:]}" for y in range(sy, sy - n, -1)]
 def pdate(s):
@@ -21,7 +21,7 @@ def pdate(s):
         try: return datetime.datetime.strptime(s, f).date()
         except (ValueError, TypeError): pass
     return None
-SEASONS = euro_seasons(3); CURRENT = SEASONS[0]
+SEASONS = euro_seasons(6); CURRENT = SEASONS[0]
 print(f"League seasons (auto): {SEASONS}", flush=True)
 
 OUT = {}

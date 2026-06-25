@@ -16,7 +16,7 @@ def latest_seasons(n=3, today=None):
     d = today or datetime.date.today()
     start = d.year if d.month >= 9 else d.year - 1
     return [start - i for i in range(n)]
-_SY = latest_seasons(3); _WT = [1.0, 0.75, 0.55]
+_SY = latest_seasons(5); _WT = [1.0, 0.75, 0.55, 0.40, 0.30]
 SEASONS = list(zip(_SY, _WT))                         # [(currentStartYear,1.0),(prev,.75),(prev2,.55)]
 CURRENT = _SY[0]                                      # in-progress season -> never cache (daily refresh)
 print(f"NHL xG seasons (auto): {[f'{y}-{str(y+1)[2:]}' for y in _SY]}  current={CURRENT}", flush=True)

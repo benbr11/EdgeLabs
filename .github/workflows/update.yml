@@ -28,6 +28,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Cache large source data (past seasons; current re-fetched each run)
+        uses: actions/cache@v4
+        with:
+          path: |
+            pbp_*.csv
+            mp_shots_*.zip
+          key: bigdata-${{ github.run_id }}
+          restore-keys: bigdata-
       - name: Build SOCCER predictions
         run: |
           python build_context.py
@@ -48,6 +56,7 @@ jobs:
         continue-on-error: true
         run: |
           python build_nfl.py
+          python build_nfl_players.py
           python build_nba.py
           python build_mlb.py
           python export_pro.py

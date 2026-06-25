@@ -361,6 +361,10 @@ function playersScreen(){
 /* --------------------------------- theme + nav + init ---------------------- */
 function setTheme(light){ document.body.classList.toggle("light",light);
   document.getElementById("themeBtn").textContent=light?"☀️":"🌙";
+  var hero=document.querySelector(".herologo");          // light/dark logo: prefer a per-theme PNG, fall back gracefully
+  if(hero){ var DARK="edgelab-wordmark.png", LITE="edgelab-wordmark-light.png";
+    hero.onerror=function(){ if(this.src.indexOf(LITE)>-1){ this.src=DARK; } else { this.onerror=null; this.src="edgelab-logo.svg"; } };
+    hero.src = light ? LITE : DARK; }
   try{ localStorage.setItem("wc-theme",light?"light":"dark"); }catch(e){} }
 document.getElementById("themeBtn").onclick=()=>setTheme(!document.body.classList.contains("light"));
 try{ setTheme(localStorage.getItem("wc-theme")==="light"); }catch(e){}

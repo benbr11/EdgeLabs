@@ -20,8 +20,8 @@ def latest_seasons(n=3, today=None):                  # NHL season start years, 
     return [start - i for i in range(n)]
 RELOCATE = {"ARI": "UTA"}                             # franchise relocations -> unify history (Arizona->Utah 2024)
 def fix(ab): return RELOCATE.get(ab, ab)
-_SY = latest_seasons(3)
-SEASONS = [(f"{y}{y+1}", w) for y, w in zip(_SY, [1.0, 0.8, 0.6])]   # NHL API format YYYYYYYY
+_SY = latest_seasons(5)
+SEASONS = [(f"{y}{y+1}", w) for y, w in zip(_SY, [1.0, 0.8, 0.6, 0.45, 0.35])]   # NHL API format YYYYYYYY
 SEASON_INTS = [int(s) for s, _ in SEASONS]
 print(f"NHL seasons (auto): {[s for s,_ in SEASONS]}", flush=True)
 HALFLIFE = 430.0                                      # per-date recency (independent of season weights)

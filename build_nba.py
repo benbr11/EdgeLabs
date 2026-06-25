@@ -13,7 +13,7 @@ def nba_seasons(n=3, today=None):                      # ESPN labels NBA season 
     d = today or datetime.date.today(); endyr = d.year if d.month >= 10 else d.year  # season ending ~Jun
     # if before October, the most recent completed/inprogress season ends this calendar year
     return list(range(endyr, endyr - n, -1))
-SEASONS = nba_seasons(3); HALFLIFE = 300.0
+SEASONS = nba_seasons(5); CUR = SEASONS[0]; HALFLIFE = 320.0
 print(f"NBA seasons (auto, ESPN end-year): {SEASONS}", flush=True)
 
 ESPN = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
@@ -86,4 +86,35 @@ with open(PROJ+r"\nba_ratings.csv","w",newline="",encoding="utf-8") as f:
                     round(LG+off[t],1), round(LG+dfn[t],1), round(LG,2), round(HFA,2), round(SD_M,2), round(SD_T,2)])
 print("TOP 6:", [f"{t} ({off[t]-dfn[t]:+.1f})" for t in order[:6]])
 print("BOT 4:", order[-4:])
-print("Wrote nba_ratings.csv")
+
+# ---- player values (current-season per-game stats from ESPN byathlete) ----
+players = []
+try:
+    base = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete"
+    pj = get(f"{base}?region=us&lang=en&contentorigin=espn&isqualified=true&limit=320&sort=offensive.avgPoints%3Adesc&season={CUR}&seasontype=2")
+    names = {c["name"]: c.get("names", []) for c in pj.get("categories", [])}
+    for a in pj.get("athletes", []):
+        info = a.get("athlete", {}); m = {}
+        for c in a.get("categories", []):
+            ns = names.get(c["name"], []); vals = c.get("values", [])
+            for i, key in enumerate(ns):
+                if i < len(vals): m[key] = vals[i]
+        gp = m.get("gamesPlayed", 0) or 0
+        if gp < 25: continue
+        pts = m.get("avgPoints", 0) or 0; reb = m.get("avgRebounds", 0) or 0; ast = m.get("avgAssists", 0) or 0
+        stl = m.get("avgSteals", 0) or 0; blk = m.get("avgBlocks", 0) or 0; to = m.get("avgTurnovers", 0) or 0
+        pos = (info.get("position") or {}); pos = pos.get("abbreviation", "") if isinstance(pos, dict) else ""
+        try: tab = id2ab.get(int(info.get("teamId", 0)), info.get("teamShortName", ""))
+        except (ValueError, TypeError): tab = info.get("teamShortName", "")
+        val = pts + 0.7 * reb + 0.7 * ast + stl + blk - 0.7 * to     # simple all-around impact value
+        players.append((round(val, 1), info.get("displayName", ""), tab, pos, round(pts, 1), round(reb, 1), round(ast, 1), round(stl, 1), round(blk, 1)))
+    players.sort(reverse=True)
+    import csv as _csv
+    with open(PROJ + r"\nba_players.csv", "w", newline="", encoding="utf-8") as f:
+        w = _csv.writer(f); w.writerow(["player", "team", "pos", "value", "ppg", "rpg", "apg", "spg", "bpg"])
+        for val, nm, tab, pos, pts, reb, ast, stl, blk in players:
+            w.writerow([nm, tab, pos, val, pts, reb, ast, stl, blk])
+    print(f"  players: {len(players)} | TOP 6:", [f"{p[1]} ({p[0]})" for p in players[:6]])
+except Exception as e:
+    print(f"  players: skipped ({e})", flush=True)
+print("Wrote nba_ratings.csv" + (", nba_players.csv" if players else ""))

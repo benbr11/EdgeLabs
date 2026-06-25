@@ -1,0 +1,21 @@
+{
+  "event": "UFC Fight Night: Fiziev vs. Torres",
+  "date": "2026-06-27",
+  "venue": "National Gymnastics Arena",
+  "location": "Baku, Azerbaijan",
+  "bouts": [
+    {"fighterA": "Rafael Fiziev", "fighterB": "Manuel Torres", "weightClass": "Lightweight", "rounds": 5, "isTitle": false},
+    {"fighterA": "Shara Magomedov", "fighterB": "Michel Pereira", "weightClass": "Middleweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Nazim Sadykhov", "fighterB": "Matheus Camilo", "weightClass": "Lightweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Asu Almabayev", "fighterB": "Charles Johnson", "weightClass": "Flyweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Ikram Aliskerov", "fighterB": "Brunno Ferreira", "weightClass": "Middleweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Abus Magomedov", "fighterB": "Michal Oleksiejczuk", "weightClass": "Middleweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Farman Hasanov", "fighterB": "Eric Nolan", "weightClass": "Welterweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Abdul-Rakhman Yakhyaev", "fighterB": "Julius Walker", "weightClass": "Light Heavyweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Nursulton Ruziboev", "fighterB": "Andrey Pulyaev", "weightClass": "Welterweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Kaan Ofli", "fighterB": "Javier Reyes", "weightClass": "Featherweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Daniil Donchenko", "fighterB": "Theodor Berggren", "weightClass": "Welterweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Bekzat Almakhan", "fighterB": "Jean Matsumoto", "weightClass": "Bantamweight", "rounds": 3, "isTitle": false},
+    {"fighterA": "Tahir Abdullayev", "fighterB": "Jefferson Nascimento", "weightClass": "Lightweight", "rounds": 3, "isTitle": false}
+  ]
+}

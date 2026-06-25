@@ -4,3 +4,16 @@ __pycache__/
 *.pyc
 probe_*.py
 inspect_*.py
+raw_fight_results.csv
+raw_fight_stats.csv
+raw_fighter_tott.csv
+raw_fighter_details.csv
+raw_events.csv
+raw_hometowns.csv
+raw_scorecards.csv
+fighter_db_*.csv
+fighter_log_*.csv
+dl_*.py
+scrape_*.py
+validate_ufc_*.py
+build_ufc_hometowns.py

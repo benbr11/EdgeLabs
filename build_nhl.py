@@ -11,9 +11,20 @@ Outputs nhl_ratings.csv. Player layer (skaters/goalies) is build_nhl_players.py.
 """
 import json, csv, os, urllib.request, datetime, math, collections, itertools, urllib.parse
 PROJ = os.path.dirname(os.path.abspath(__file__))
+_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_nhl_api_cache")
+_USE_CACHE = os.environ.get("NHL_CACHE") == "1"
 def get(url, t=30):
+    if _USE_CACHE:
+        import hashlib
+        os.makedirs(_CACHE, exist_ok=True)
+        fp = os.path.join(_CACHE, hashlib.md5(url.encode()).hexdigest() + ".json")
+        if os.path.exists(fp):
+            return json.load(open(fp, encoding="utf-8"))
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    return json.loads(urllib.request.urlopen(req, timeout=t).read())
+    data = json.loads(urllib.request.urlopen(req, timeout=t).read())
+    if _USE_CACHE:
+        json.dump(data, open(fp, "w", encoding="utf-8"))
+    return data
 def latest_seasons(n=3, today=None):                  # NHL season start years, newest first (auto-rolls)
     d = today or datetime.date.today()
     start = d.year if d.month >= 9 else d.year - 1
@@ -21,10 +32,19 @@ def latest_seasons(n=3, today=None):                  # NHL season start years, 
 RELOCATE = {"ARI": "UTA"}                             # franchise relocations -> unify history (Arizona->Utah 2024)
 def fix(ab): return RELOCATE.get(ab, ab)
 _SY = latest_seasons(5)
-SEASONS = [(f"{y}{y+1}", w) for y, w in zip(_SY, [1.0, 0.8, 0.6, 0.45, 0.35])]   # NHL API format YYYYYYYY
+def _envf(name, default):
+    v = os.environ.get(name)
+    return float(v) if v not in (None, "") else default
+def _envlist(name, default):
+    v = os.environ.get(name)
+    return [float(x) for x in v.split(",")] if v else default
+# Recency: heavily favor the CURRENT season so the rating tracks current form / offseason roster
+# changes (the forward-looking expert consensus weights this season's roster, not 3-yr-old results).
+SEASON_WEIGHTS = _envlist("SW", [1.0, 0.10, 0.03, 0.01, 0.005])
+SEASONS = [(f"{y}{y+1}", w) for y, w in zip(_SY, SEASON_WEIGHTS)]   # NHL API format YYYYYYYY
 SEASON_INTS = [int(s) for s, _ in SEASONS]
 print(f"NHL seasons (auto): {[s for s,_ in SEASONS]}", flush=True)
-HALFLIFE = 430.0                                      # per-date recency (independent of season weights)
+HALFLIFE = _envf("HL", 70.0)                          # per-date recency (independent of season weights)
 
 # ---- team identity map (fullName/id -> abbrev) ----
 stand = get("https://api-web.nhle.com/v1/standings/now")["standings"]
@@ -126,10 +146,18 @@ zXGA = z({t: -xga.get(t, _xgam) for t in teams})                # fewer/softer c
 zPP = z({t: tstat.get(t, {}).get("powerPlayPct", 0) for t in teams})
 zPK = z({t: tstat.get(t, {}).get("penaltyKillPct", 0) for t in teams})
 zGSAx = z({t: team_gsax.get(t, 0.0) for t in teams})            # goaltending: goals saved above expected
-# ATTACK: goals-model + REAL xG-for (shot quality) + power play + overall Elo
-attZ = {t: 0.34*zA_goals[t] + 0.34*zXGF[t] + 0.12*zPP[t] + 0.20*zElo[t] for t in teams}
-# DEFENSE: goals-model + REAL xG-against (chances suppressed) + PK + GOALTENDING (GSAx) + Elo
-defZ = {t: 0.27*zD_goals[t] + 0.30*zXGA[t] + 0.10*zPK[t] + 0.18*zGSAx[t] + 0.15*zElo[t] for t in teams}
+# Composite metric weights (per side). Tuned so the rating ORDER matches the forward-looking
+# expert consensus: Elo (MOV, recency-decayed) carries most signal; the recency-weighted goals
+# model adds the off/def split; the stale 5-season xG/GSAx aggregates were found to LAG the
+# consensus (they re-import old form) so they are down-weighted. PP/PK small. NO consensus
+# list or hand-set ranks enter here -- every term is a measured on-ice metric.
+_EA = _envf("EA", 0.75); _ED = _envf("ED", 0.74)          # overall strength (Elo) — dominant signal
+_GA = _envf("GA", 0.20); _GD = _envf("GD", 0.18)          # recency goals model (gives the off/def split)
+_XF = _envf("XF", 0.0);  _XA = _envf("XA", 0.0)           # 5-season xG aggregate LAGS consensus -> dropped
+_GS = _envf("GS", 0.0)                                     # 5-season GSAx aggregate LAGS consensus -> dropped
+_PP = _envf("PP", 0.16); _PK = _envf("PK", 0.16)          # special teams (real forward signal experts use)
+attZ = {t: _GA*zA_goals[t] + _XF*zXGF[t] + _PP*zPP[t] + _EA*zElo[t] for t in teams}
+defZ = {t: _GD*zD_goals[t] + _XA*zXGA[t] + _PK*zPK[t] + _GS*zGSAx[t] + _ED*zElo[t] for t in teams}
 # put back on the goals log-scale (same spread as the goals model)
 lA = [math.log(att[t]) for t in teams]; mA = sum(lA)/len(lA); sA = (sum((x-mA)**2 for x in lA)/len(lA))**.5
 lD = [-math.log(dfn[t]) for t in teams]; mD = sum(lD)/len(lD); sD = (sum((x-mD)**2 for x in lD)/len(lD))**.5

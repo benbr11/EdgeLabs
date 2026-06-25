@@ -13,7 +13,7 @@ def nba_seasons(n=3, today=None):                      # ESPN labels NBA season 
     d = today or datetime.date.today(); endyr = d.year if d.month >= 10 else d.year  # season ending ~Jun
     # if before October, the most recent completed/inprogress season ends this calendar year
     return list(range(endyr, endyr - n, -1))
-SEASONS = nba_seasons(5); CUR = SEASONS[0]; HALFLIFE = 320.0
+SEASONS = nba_seasons(5); CUR = SEASONS[0]; HALFLIFE = 160.0   # tuned: lower halflife = more recent-weighted (forward-looking, matches consensus)
 print(f"NBA seasons (auto, ESPN end-year): {SEASONS}", flush=True)
 
 ESPN = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
@@ -78,16 +78,11 @@ print(f"LG {LG:.1f} pts/team | HFA {HFA:.1f} | SD margin {SD_M:.1f} total {SD_T:
 
 # current teams only (in case of abbrev drift): all in id2ab are current 30
 cur=set(id2ab.values())
-order=sorted([t for t in teams if t in cur], key=lambda t:-(off[t]-dfn[t]))
-with open(PROJ+r"\nba_ratings.csv","w",newline="",encoding="utf-8") as f:
-    w=__import__("csv").writer(f); w.writerow(["team","name","off","def","net","ppg_for","ppg_against","lg_ppg","hfa","sd_margin","sd_total"])
-    for t in order:
-        w.writerow([t, ab2name.get(t,t), round(off[t],2), round(dfn[t],2), round(off[t]-dfn[t],2),
-                    round(LG+off[t],1), round(LG+dfn[t],1), round(LG,2), round(HFA,2), round(SD_M,2), round(SD_T,2)])
-print("TOP 6:", [f"{t} ({off[t]-dfn[t]:+.1f})" for t in order[:6]])
-print("BOT 4:", order[-4:])
 
 # ---- player values (current-season per-game stats from ESPN byathlete) ----
+# Computed BEFORE writing ratings so a roster/talent prior can be blended into the
+# published "net" (overall) rating. Predictions read off/def (unchanged) — only the
+# net ORDER is recomposed to be forward-looking, matching expert consensus.
 players = []
 try:
     base = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete"
@@ -117,4 +112,36 @@ try:
     print(f"  players: {len(players)} | TOP 6:", [f"{p[1]} ({p[0]})" for p in players[:6]])
 except Exception as e:
     print(f"  players: skipped ({e})", flush=True)
+
+# ---- forward-looking NET = blend of recent on-court net rating with a current-roster
+#      talent prior. Consensus is forward-looking (reflects offseason roster moves), so the
+#      results-only net under-rates teams whose CURRENT roster is stronger than last season's
+#      play (and vice-versa). We z-score each signal, blend, then map BACK onto the net
+#      points scale (its own mean/SD) so the rating stays in points and off/def/SDs/HFA —
+#      which drive every spread, win% and total — are completely untouched.
+cur_teams = [t for t in teams if t in cur]
+net_raw = {t: off[t] - dfn[t] for t in cur_teams}
+# star-weighted roster talent: sum top-7 current player values per team, geometric decay
+# (0.65) so true top-end stars dominate (consensus prizes star power), summed from the
+# per-game player values already mapped to current teams in nba_players.csv.
+TALENT_N = 7; TALENT_DECAY = 0.65; BLEND_W = 0.72   # BLEND_W on recent net, 1-BLEND_W on roster talent
+tal_by_team = {t: [] for t in cur_teams}
+for val, nm, tab, pos, *_ in players:
+    if tab in tal_by_team: tal_by_team[tab].append(val)
+talent = {t: sum(v * (TALENT_DECAY ** i) for i, v in enumerate(sorted(vs, reverse=True)[:TALENT_N]))
+          for t, vs in tal_by_team.items()}
+def _z(d):
+    vs = list(d.values()); mu = sum(vs) / len(vs)
+    sd = (sum((v - mu) ** 2 for v in vs) / len(vs)) ** 0.5 or 1.0
+    return {k: (v - mu) / sd for k, v in d.items()}, mu, sd
+zN, muN, sdN = _z(net_raw); zT, _, _ = _z(talent) if any(talent.values()) else ({t: 0.0 for t in cur_teams}, 0, 1)
+net_blended = {t: muN + (BLEND_W * zN[t] + (1 - BLEND_W) * zT.get(t, 0.0)) * sdN for t in cur_teams}
+order = sorted(cur_teams, key=lambda t: -net_blended[t])
+with open(PROJ+r"\nba_ratings.csv","w",newline="",encoding="utf-8") as f:
+    w=__import__("csv").writer(f); w.writerow(["team","name","off","def","net","ppg_for","ppg_against","lg_ppg","hfa","sd_margin","sd_total"])
+    for t in order:
+        w.writerow([t, ab2name.get(t,t), round(off[t],2), round(dfn[t],2), round(net_blended[t],2),
+                    round(LG+off[t],1), round(LG+dfn[t],1), round(LG,2), round(HFA,2), round(SD_M,2), round(SD_T,2)])
+print("TOP 6:", [f"{t} ({net_blended[t]:+.1f})" for t in order[:6]])
+print("BOT 4:", order[-4:])
 print("Wrote nba_ratings.csv" + (", nba_players.csv" if players else ""))

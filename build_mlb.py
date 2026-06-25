@@ -15,8 +15,21 @@ NAMEFIX = {"Oakland Athletics": "Athletics"}
 fn = lambda n: NAMEFIX.get(n, n)
 def seasons(n=5, today=None): d = today or datetime.date.today(); return list(range(d.year, d.year - n, -1))
 SEASONS = seasons(5); CUR = SEASONS[0]
-SW = {y: 0.5 ** ((CUR - y) / 1.35) for y in SEASONS}   # smooth season recency (1.0, .60, .36, .22, .13)
-HALFLIFE = 500.0
+_E = lambda k, d: float(os.environ.get(k, d))
+SW_HL = _E("MLB_SW_HL", 0.70)                           # season-recency halflife (smaller -> 2026 dominates harder)
+SW = {y: 0.5 ** ((CUR - y) / SW_HL) for y in SEASONS}   # sharp season recency: 2026 (in progress) dominates
+HALFLIFE = _E("MLB_HALFLIFE", 230.0)                    # game-level decay (shorter -> recent games / current form matter more)
+# --- rating-ORDER composition (does NOT touch AVG/HOME/SD/points scale; only how att/dfn are composed) ---
+# The consensus is current-form driven; a team's recency-weighted WINNING PCT tracks it far better
+# than run differential alone (teams over/under-perform their run diff). We blend a win%-implied
+# run-equivalent into the run-based att/dfn, keeping geo-mean 1.0 so the rating stays in run units.
+WPCT_W = _E("MLB_WPCT_W", 0.80)    # weight on recency-weighted win%-implied rating vs raw run-diff
+WPCT_SCALE = _E("MLB_WPCT_SCALE", 8.0)  # run-diff-per-game equivalent of a full win% swing (0->1)
+REG = _E("MLB_REG", 0.40)          # regression of the composed multiplier toward league mean 1.0 (MLB high-variance)
+PRIOR_W = _E("MLB_PRIOR_W", 0.0)   # optional roster-talent nudge (OPS/RA9); off by default (added noise vs win%)
+N_HIT = 9          # top hitters used for a team's offense prior
+N_SP = 5           # top starters used for a team's run-prevention prior
+PRIOR_SPREAD = _E("MLB_PRIOR_SPREAD", 0.7) # how strongly prior z-scores map into att/dfn multiplier space
 print(f"MLB seasons (auto): {SEASONS}", flush=True)
 
 # ---- 1. game results -> team run ratings ----
@@ -32,19 +45,26 @@ for y in SEASONS:
             except (KeyError, ValueError, TypeError): continue
             try: d = datetime.date.fromisoformat(g.get("officialDate") or g["gameDate"][:10])
             except (ValueError, KeyError): continue
-            games.append((d, fn(h["team"]["name"]), fn(a["team"]["name"]), hs, as_))
+            games.append((d, fn(h["team"]["name"]), fn(a["team"]["name"]), hs, as_, y))
 print(f"  {len(games)} games", flush=True)
-ref = max(g[0] for g in games); wt = lambda d: 0.5 ** ((ref - d).days / HALFLIFE)
+ref = max(g[0] for g in games)
+# Game weight = game-level recency * SEASON recency. Consensus is current-form driven, and the
+# in-progress 2026 standings track it ~0.84-0.96; folding SW[season] in lets 2026 dominate the
+# att/dfn solve while older seasons only stabilize small early-season samples.
+wt = lambda d, y: 0.5 ** ((ref - d).days / HALFLIFE) * SW.get(y, 0.05)
 teams = sorted({t for g in games for t in (g[1], g[2])})
 tw = tr = hr = ar = 0.0
-for d, h, a, hs, as_ in games:
-    w = wt(d); tr += w*(hs+as_); tw += 2*w; hr += w*hs; ar += w*as_
+twsum = collections.defaultdict(float); twin = collections.defaultdict(float)  # recency-weighted games / wins per team
+for d, h, a, hs, as_, y in games:
+    w = wt(d, y); tr += w*(hs+as_); tw += 2*w; hr += w*hs; ar += w*as_
+    twsum[h] += w; twsum[a] += w
+    twin[h] += w*(1 if hs > as_ else 0); twin[a] += w*(1 if as_ > hs else 0)
 AVG = tr/tw; HOME = min(1.10, max(1.0, hr/ar))
 att = {t: 1.0 for t in teams}; dfn = {t: 1.0 for t in teams}
 for _ in range(60):
     na={t:0. for t in teams}; da=dict(na); nd=dict(na); dd=dict(na)
-    for d, h, a, hs, as_ in games:
-        w=wt(d)
+    for d, h, a, hs, as_, y in games:
+        w=wt(d, y)
         na[h]+=w*hs; da[h]+=w*AVG*dfn[a]; nd[a]+=w*hs; dd[a]+=w*AVG*att[h]
         na[a]+=w*as_; da[a]+=w*AVG*dfn[h]; nd[h]+=w*as_; dd[h]+=w*AVG*att[a]
     for t in teams:
@@ -109,6 +129,44 @@ for nm, d in HC.items():
                    "hr": round(d["homeRuns"]/sw), "rbi": round(d["rbi"]/sw), "r": round(d["runs"]/sw),
                    "sb": round(d["stolenBases"]/sw), "pa": round(pa/sw)}
 print(f"  {len(hitters)} qualified hitters", flush=True)
+
+# ---- 3. compose rating ORDER: blend run-diff att/dfn with a recency-weighted WIN%-implied rating ----
+# Why: consensus tracks W-L far more than pure run differential (teams over/under-perform their run
+# diff via close-game record / blowout distribution). Both terms come from the SAME recency-weighted
+# games already used above (no extra data, no consensus leakage). We keep everything in run-diff units
+# and geo-mean-normalize att/dfn to 1.0 so AVG*att stays in runs -> the rating->points scale is UNCHANGED.
+import statistics as _st
+# (a) raw run-diff rating per team (in runs/game): AVG*(att - dfn)
+rd_rating = {t: AVG*(att[t] - dfn[t]) for t in teams}
+# (b) win%-implied rating: center win% at .500, scale to a runs/game equivalent
+wp = {t: (twin[t]/twsum[t] if twsum[t] else 0.5) for t in teams}
+wp_rating = {t: (wp[t]-0.5)*WPCT_SCALE for t in teams}
+# (c) blended target rating (still runs/game), then regress toward 0
+tgt = {t: (1-REG)*((1-WPCT_W)*rd_rating[t] + WPCT_W*wp_rating[t]) for t in teams}
+# (optional) tiny roster-talent nudge from current OPS / rotation RA9 (off by default)
+if PRIOR_W > 0:
+    lg_ops = _st.mean([h["ops"] for h in hitters.values()]) if hitters else 0.72
+    team_hit = collections.defaultdict(list); team_sp = collections.defaultdict(list)
+    for h in hitters.values():
+        if h["team"] in teams: team_hit[h["team"]].append(h["ops"])
+    for nm, p in pitchers.items():
+        if p["team"] in teams and pw_ip[nm] >= 60: team_sp[p["team"]].append(p["ra9"])
+    def _z(d):
+        vals=list(d.values()); m=_st.mean(vals); sd=_st.pstdev(vals) or 1e-9
+        return {t:(d[t]-m)/sd for t in d}
+    zoff=_z({t:_st.mean(sorted(team_hit.get(t,[]),reverse=True)[:N_HIT]) if team_hit.get(t) else lg_ops for t in teams})
+    zpit=_z({t:_st.mean(sorted(team_sp.get(t,[]))[:N_SP]) if team_sp.get(t) else LG_RA9 for t in teams})
+    for t in teams: tgt[t] += PRIOR_W * PRIOR_SPREAD * (zoff[t] - zpit[t])
+# (d) map the target runs/game rating back into att/dfn multipliers, split symmetrically around AVG,
+#     then geo-mean-normalize to 1.0 (preserves the runs scale exactly).
+for t in teams:
+    half = tgt[t]/2.0
+    att[t] = max(1e-6, (AVG + half)/AVG)
+    dfn[t] = max(1e-6, (AVG - half)/AVG)
+for dct in (att, dfn):
+    gm = math.exp(sum(math.log(v) for v in dct.values())/len(dct))
+    for t in dct: dct[t] /= gm
+print(f"  composed rating: WPCT_W={WPCT_W} REG={REG} PRIOR_W={PRIOR_W}", flush=True)
 
 order = sorted(teams, key=lambda t: -(att[t]/dfn[t]))
 with open(PROJ+r"\mlb_ratings.csv","w",newline="",encoding="utf-8") as f:

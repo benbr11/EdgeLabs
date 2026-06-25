@@ -33,7 +33,7 @@ def nfl_seasons(n=4, today=None):
     d = today or datetime.date.today(); sy = d.year if d.month >= 8 else d.year - 1
     return list(range(sy - n + 1, sy + 1))
 
-SEASONS = nfl_seasons(4); CUR = max(SEASONS); HALFLIFE = 330.0
+SEASONS = nfl_seasons(4); CUR = max(SEASONS); HALFLIFE = float(os.environ.get("NFL_HALFLIFE", "230.0"))   # stronger recency: last season dominates current strength
 print(f"NFL seasons (auto): {SEASONS}  (current={CUR})", flush=True)
 
 def pbp_path(yr): return os.path.join(PROJ, f"pbp_{yr}.csv")

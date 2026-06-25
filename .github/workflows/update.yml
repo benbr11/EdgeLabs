@@ -65,6 +65,10 @@ jobs:
           python build_mlb.py
           python blend_mlb.py
           python export_pro.py
+      - name: Build UFC rankings (scrape UFC.com official rankings; self-updating)
+        continue-on-error: true
+        run: |
+          python build_ufc_rankings.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

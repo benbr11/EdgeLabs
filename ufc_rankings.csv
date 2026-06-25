@@ -1,0 +1,207 @@
+division,rank,fighter
+Men's Pound-for-Pound,C,Islam Makhachev
+Men's Pound-for-Pound,1,Alexander Volkanovski
+Men's Pound-for-Pound,2,Petr Yan
+Men's Pound-for-Pound,3,Justin Gaethje
+Men's Pound-for-Pound,4,Ilia Topuria
+Men's Pound-for-Pound,5,Tom Aspinall
+Men's Pound-for-Pound,6,Sean Strickland
+Men's Pound-for-Pound,7,Alex Pereira
+Men's Pound-for-Pound,8,Merab Dvalishvili
+Men's Pound-for-Pound,9,Ciryl Gane
+Men's Pound-for-Pound,10,Joshua Van
+Men's Pound-for-Pound,11,Khamzat Chimaev
+Men's Pound-for-Pound,12,Alexandre Pantoja
+Men's Pound-for-Pound,13,Arman Tsarukyan
+Men's Pound-for-Pound,14,Charles Oliveira
+Heavyweight,C,Tom Aspinall
+Heavyweight,1,Ciryl Gane
+Heavyweight,2,Alexander Volkov
+Heavyweight,3,Sergei Pavlovich
+Heavyweight,4,Josh Hokit
+Heavyweight,5,Waldo Cortes Acosta
+Heavyweight,6,Serghei Spivac
+Heavyweight,7,Curtis Blaydes
+Heavyweight,8,Rizvan Kuniev
+Heavyweight,9,Tyrell Fortune
+Heavyweight,10,Ante Delija
+Heavyweight,11,Derrick Lewis
+Heavyweight,12,Marcin Tybura
+Heavyweight,13,Brando Peričić
+Heavyweight,14,Valter Walker
+Heavyweight,15,Mick Parkin
+Light Heavyweight,C,Carlos Ulberg
+Light Heavyweight,1,Magomed Ankalaev
+Light Heavyweight,2,Jiří Procházka
+Light Heavyweight,3,Alex Pereira
+Light Heavyweight,4,Jan Błachowicz
+Light Heavyweight,5,Khalil Rountree Jr.
+Light Heavyweight,6,Jamahal Hill
+Light Heavyweight,7,Paulo Costa
+Light Heavyweight,8,Azamat Murzakanov
+Light Heavyweight,9,Volkan Oezdemir
+Light Heavyweight,10,Bogdan Guskov
+Light Heavyweight,11,Dominick Reyes
+Light Heavyweight,12,Nikita Krylov
+Light Heavyweight,13,Johnny Walker
+Light Heavyweight,14,Alonzo Menifield
+Light Heavyweight,15,Aleksandar Rakić
+Middleweight,C,Sean Strickland
+Middleweight,1,Khamzat Chimaev
+Middleweight,2,Dricus Du Plessis
+Middleweight,3,Nassourdine Imavov
+Middleweight,4,Brendan Allen
+Middleweight,5,Caio Borralho
+Middleweight,6,Anthony Hernandez
+Middleweight,7,Joe Pyfer
+Middleweight,8,Reinier de Ridder
+Middleweight,9,Israel Adesanya
+Middleweight,10,Robert Whittaker
+Middleweight,11,Jared Cannonier
+Middleweight,12,Gregory Rodrigues
+Middleweight,13,Christian Leroy Duncan
+Middleweight,14,Roman Dolidze
+Middleweight,15,Bo Nickal
+Welterweight,C,Islam Makhachev
+Welterweight,1,Ian Machado Garry
+Welterweight,2,Carlos Prates
+Welterweight,3,Michael Morales
+Welterweight,4,Jack Della Maddalena
+Welterweight,5,Gabriel Bonfim
+Welterweight,6,Sean Brady
+Welterweight,7,Belal Muhammad
+Welterweight,8,Leon Edwards
+Welterweight,9,Kamaru Usman
+Welterweight,10,Joaquin Buckley
+Welterweight,11,Yaroslav Amosov
+Welterweight,12,Mike Malott
+Welterweight,13,Michael Venom Page
+Welterweight,14,Uroš Medić
+Welterweight,15,Daniel Rodriguez
+Lightweight,C,Justin Gaethje
+Lightweight,1,Ilia Topuria
+Lightweight,2,Arman Tsarukyan
+Lightweight,3,Charles Oliveira
+Lightweight,4,Max Holloway
+Lightweight,5,Benoît Saint Denis
+Lightweight,6,Paddy Pimblett
+Lightweight,7,Mauricio Ruffy
+Lightweight,8,Mateusz Gamrot
+Lightweight,9,Dan Hooker
+Lightweight,10,Renato Moicano
+Lightweight,11,Rafael Fiziev
+Lightweight,12,Quillan Salkilld
+Lightweight,13,Tom Nolan
+Lightweight,14,Beneil Dariush
+Lightweight,15,Manuel Torres
+Featherweight,C,Alexander Volkanovski
+Featherweight,1,Movsar Evloev
+Featherweight,2,Diego Lopes
+Featherweight,3,Lerone Murphy
+Featherweight,4,Aljamain Sterling
+Featherweight,5,Yair Rodriguez
+Featherweight,6,Jean Silva
+Featherweight,7,Arnold Allen
+Featherweight,8,Youssef Zalal
+Featherweight,9,Kevin Vallejos
+Featherweight,10,Steve Garcia
+Featherweight,11,Brian Ortega
+Featherweight,12,Aaron Pico
+Featherweight,13,Melquizael Costa
+Featherweight,14,David Onama
+Featherweight,15,Josh Emmett
+Bantamweight,C,Petr Yan
+Bantamweight,1,Merab Dvalishvili
+Bantamweight,2,Sean O'Malley
+Bantamweight,3,Umar Nurmagomedov
+Bantamweight,4,Cory Sandhagen
+Bantamweight,5,Song Yadong
+Bantamweight,6,Aiemann Zahabi
+Bantamweight,7,Mario Bautista
+Bantamweight,8,David Martinez
+Bantamweight,9,Deiveson Figueiredo
+Bantamweight,10,Marlon Vera
+Bantamweight,11,Payton Talbott
+Bantamweight,12,Raul Rosas Jr.
+Bantamweight,13,Vinicius Oliveira
+Bantamweight,14,Raoni Barcelos
+Bantamweight,15,Marcus McGhee
+Flyweight,C,Joshua Van
+Flyweight,1,Alexandre Pantoja
+Flyweight,2,Manel Kape
+Flyweight,3,Tatsuro Taira
+Flyweight,4,Brandon Royval
+Flyweight,5,Kyoji Horiguchi
+Flyweight,6,Lone’er Kavanagh
+Flyweight,7,Amir Albazi
+Flyweight,8,Brandon Moreno
+Flyweight,9,Asu Almabayev
+Flyweight,10,Steve Erceg
+Flyweight,11,Alex Perez
+Flyweight,12,Tim Elliott
+Flyweight,13,Tagir Ulanbekov
+Flyweight,14,Charles Johnson
+Flyweight,15,Edgar Chairez
+Women's Pound-for-Pound,C,Valentina Shevchenko
+Women's Pound-for-Pound,1,Kayla Harrison
+Women's Pound-for-Pound,2,Zhang Weili
+Women's Pound-for-Pound,3,Natalia Silva
+Women's Pound-for-Pound,4,Manon Fiorot
+Women's Pound-for-Pound,5,Mackenzie Dern
+Women's Pound-for-Pound,6,Alexa Grasso
+Women's Pound-for-Pound,7,Erin Blanchfield
+Women's Pound-for-Pound,8,Julianna Peña
+Women's Pound-for-Pound,9,Tatiana Suarez
+Women's Pound-for-Pound,10,Virna Jandiroba
+Women's Pound-for-Pound,11,Yan Xiaonan
+Women's Pound-for-Pound,12,Raquel Pennington
+Women's Pound-for-Pound,13,Rose Namajunas
+Women's Pound-for-Pound,14,Maycee Barber
+Women's Bantamweight,C,Kayla Harrison
+Women's Bantamweight,1,Julianna Peña
+Women's Bantamweight,2,Raquel Pennington
+Women's Bantamweight,3,Joselyne Edwards
+Women's Bantamweight,4,Norma Dumont
+Women's Bantamweight,5,Ailin Perez
+Women's Bantamweight,6,Irene Aldana
+Women's Bantamweight,7,Yana Santos
+Women's Bantamweight,8,Macy Chiasson
+Women's Bantamweight,9,Luana Santos
+Women's Bantamweight,10,Jacqueline Cavalcanti
+Women's Bantamweight,11,Karol Rosa
+Women's Bantamweight,12,Bia Mesquita
+Women's Bantamweight,13,Nora Cornolle
+Women's Bantamweight,14,Michelle Montague
+Women's Bantamweight,15,Miesha Tate
+Women's Flyweight,C,Valentina Shevchenko
+Women's Flyweight,1,Natalia Silva
+Women's Flyweight,2,Manon Fiorot
+Women's Flyweight,3,Alexa Grasso
+Women's Flyweight,4,Erin Blanchfield
+Women's Flyweight,5,Rose Namajunas
+Women's Flyweight,6,Maycee Barber
+Women's Flyweight,7,Jasmine Jasudavicius
+Women's Flyweight,8,Tracy Cortez
+Women's Flyweight,9,Miranda Maverick
+Women's Flyweight,10,Karine Silva
+Women's Flyweight,11,Casey O'Neill
+Women's Flyweight,12,Wang Cong
+Women's Flyweight,13,Eduarda Moura
+Women's Flyweight,14,JJ Aldrich
+Women's Flyweight,15,Gabriella Fernandes
+Women's Strawweight,C,Mackenzie Dern
+Women's Strawweight,1,Zhang Weili
+Women's Strawweight,2,Tatiana Suarez
+Women's Strawweight,3,Virna Jandiroba
+Women's Strawweight,4,Yan Xiaonan
+Women's Strawweight,5,Gillian Robertson
+Women's Strawweight,6,Loopy Godinez
+Women's Strawweight,7,Amanda Lemos
+Women's Strawweight,8,Tabatha Ricci
+Women's Strawweight,9,Jéssica Andrade
+Women's Strawweight,10,Amanda Ribas
+Women's Strawweight,11,Fatima Kline
+Women's Strawweight,12,Angela Hill
+Women's Strawweight,13,Denise Gomes
+Women's Strawweight,14,Alexia Thainara
+Women's Strawweight,15,Mizuki

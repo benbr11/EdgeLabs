@@ -223,7 +223,7 @@ header{padding-right:96px}
     <button class="sporttile" data-goto="nfl"><span class="tileicon">🏈</span><span class="tilename">NFL</span><span class="tilemeta">Football · live model</span></button>
     <button class="sporttile" data-goto="nba"><span class="tileicon">🏀</span><span class="tilename">NBA</span><span class="tilemeta">Basketball · live model</span></button>
     <button class="sporttile" data-goto="mlb"><span class="tileicon">⚾</span><span class="tilename">MLB</span><span class="tilemeta">Baseball · live model</span></button>
-    <div class="sporttile soon"><span class="tileicon">🥊</span><span class="tilename">UFC</span><span class="tilemeta">coming soon</span></div>
+    <button class="sporttile" data-goto="ufc"><span class="tileicon">🥊</span><span class="tilename">UFC</span><span class="tilemeta">Rankings · live</span></button>
   </div>
 </div>
 
@@ -374,6 +374,10 @@ header{padding-right:96px}
   <div class="sporthead"><button class="backbtn" data-goto="home">← Sports</button><h2>⚾ MLB</h2></div>
   <div id="mlb-body"></div>
 </div>
+<div id="app-ufc" class="sportapp">
+  <div class="sporthead"><button class="backbtn" data-goto="home">← Sports</button><h2>🥊 UFC</h2></div>
+  <div id="ufc-body"></div>
+</div>
 
 <script src="data.js"></script>
 <script src="nhl_data.js"></script>
@@ -381,13 +385,15 @@ header{padding-right:96px}
 <script src="nfl_data.js"></script>
 <script src="nba_data.js"></script>
 <script src="mlb_data.js"></script>
+<script src="ufc_rankings.js"></script>
 <script src="app.js"></script>
 <script src="nhl_app.js"></script>
 <script src="leagues_app.js"></script>
 <script src="prosports_app.js"></script>
+<script src="ufc_app.js"></script>
 <script>
 (function(){
-  var ids={home:'home','soccer-hub':'soccer-hub',soccer:'app-soccer',nhl:'app-nhl',league:'app-league',nfl:'app-nfl',nba:'app-nba',mlb:'app-mlb'};
+  var ids={home:'home','soccer-hub':'soccer-hub',soccer:'app-soccer',nhl:'app-nhl',league:'app-league',nfl:'app-nfl',nba:'app-nba',mlb:'app-mlb',ufc:'app-ufc'};
   function show(v){ if(!ids[v])v='home';
     for(var k in ids){ var e=document.getElementById(ids[k]); if(e)e.classList.toggle('on',k===v); }
     history.replaceState(null,'','#'+v); scrollTo(0,0); }

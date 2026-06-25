@@ -44,6 +44,13 @@ jobs:
         continue-on-error: true
         run: |
           python build_leagues.py
+      - name: Build NFL / NBA / MLB (self-updating; auto-rolls seasons)
+        continue-on-error: true
+        run: |
+          python build_nfl.py
+          python build_nba.py
+          python build_mlb.py
+          python export_pro.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

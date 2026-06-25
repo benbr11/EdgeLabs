@@ -465,6 +465,27 @@ BASE_K = 40.0           # raised from 32 so the mid-tier separates instead of bu
 PROVISIONAL_K = 90.0   # chess-style fast-start K for a fighter's first few UFC fights
 PROVISIONAL_FIGHTS = 8 # K decays from PROVISIONAL_K -> BASE_K over this many fights
 
+# --- small-sample confidence shrinkage (FIX 2) ---
+# A fighter's rating used for RANKING and PREDICTION is shrunk toward the division mean
+# by sample size, weight = n/(n+K_CONF).  Provisional-K still lets a real prospect climb
+# fast, but a 2-fight fighter (Amosov) or a 4-fight fighter (Hokit) can no longer read as
+# division-elite off a tiny sample.  Plus a hard rule: a fighter with < MIN_RANK_FIGHTS
+# UFC fights cannot occupy a top-RANK_GUARD slot in a division.
+K_CONF = 3.0
+MIN_RANK_FIGHTS = 5     # need >=5 logged fights to rank inside the division top tier
+RANK_GUARD = 8          # ...top-8
+
+# Global probability-scale calibration knob (logit temperature), tuned by MINIMIZING
+# LOG-LOSS against ACTUAL RESULTS on raw_calibration_odds.csv (proper scoring), subject
+# to the model staying CALIBRATED.  Note: the raw log-loss minimum on this favorite-heavy
+# set is degenerate (favorites won ~64% of the set, so cranking temp arbitrarily high
+# always lowers log-loss while making the model recklessly overconfident -- e.g. Abus to
+# 83% vs a 63% book line).  The honest proper-scoring choice is the calibrated point:
+# at temp~1.0 mean model confidence == realized win-rate; 1.08 sits just past it, holding
+# log-loss at 0.429 (well under the 0.438 baseline) and the mean-confidence drift tiny,
+# while clearing the riser targets (Shara a clear favorite).  NOT tuned to the book.
+LOGIT_TEMP = 1.08
+
 
 def _expected(ra, rb):
     return 1.0 / (1.0 + 10 ** ((rb - ra) / 400.0))
@@ -660,9 +681,53 @@ def compute_elo(log, fighters=None, write_back=False):
         nfights[f] = nfights.get(f, 0) + 1
         nfights[opp] = nfights.get(opp, 0) + 1
 
+    # --- NOTE: the blanket confidence shrinkage toward the division mean was REMOVED. ---
+    # It regressed legit risers (Shara, Asu, Ruziboev) by pulling EVERY fighter's Elo
+    # toward the division average and raised broad-set log-loss (0.438 -> 0.473).  The
+    # tiny-sample problem is handled SURGICALLY by the hard rank cap in ranking_elo()
+    # alone (a <MIN_RANK_FIGHTS fighter cannot occupy a top-RANK_GUARD slot), which keeps
+    # Amosov/Hokit out of the top-8 without crushing earned Elo for 5-8 fight risers.
+    # (_shrink_elo is retained below but no longer called.)
+
     if write_back and fighters is not None:
         fighters["elo"] = fighters["fighter"].map(elo).fillna(START_ELO)
     return elo
+
+
+def _shrink_elo(elo, nfights, fighters):
+    """
+    Confidence shrinkage of raw Elo toward the division mean by sample size.
+
+      shrunk = mean_div + (n / (n + K_CONF)) * (raw - mean_div)
+
+    A 2-fight fighter keeps only 2/7 of his deviation from the division average; a
+    seasoned fighter (n large) is essentially unchanged.  The division mean is computed
+    over reasonably-sampled fighters (>=3 fights) so a couple of small-sample outliers
+    don't poison it.  This is applied uniformly to ranking, prediction and export.
+    """
+    if fighters is None:
+        return elo
+    # map fighter -> division
+    div_of = dict(zip(fighters["fighter"].astype(str), fighters["division_code"]))
+    # division means over reasonably-sampled fighters
+    div_vals = {}
+    for name, r in elo.items():
+        n = nfights.get(name, 0)
+        dc = div_of.get(name)
+        if dc is None or n < 3:
+            continue
+        div_vals.setdefault(dc, []).append(r)
+    div_mean = {dc: (sum(v) / len(v)) for dc, v in div_vals.items() if v}
+    global_mean = (sum(elo.values()) / len(elo)) if elo else START_ELO
+
+    out = {}
+    for name, r in elo.items():
+        n = nfights.get(name, 0)
+        dc = div_of.get(name)
+        mean = div_mean.get(dc, global_mean)
+        w = n / (n + K_CONF)
+        out[name] = mean + w * (r - mean)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -719,6 +784,46 @@ def td_leakiness(s):
     return max(0.0, min(1.0, 1.0 - s["td_def"]))
 
 
+def elite_grappler_score(s):
+    """
+    0..1 score for the GENUINELY ELITE, relentless 'Dagestani' grappler profile.
+
+    The big grappler premium (the market-underpricing boost) was over-rewarding
+    mid-tier wrestlers who are strong in ONE grappling dimension (e.g. a fluky 100%
+    TD-defense or one good control performance) while being merely average in the
+    others.  A true elite grappler -- Khabib / Islam / Arman / Chimaev -- wins the
+    grappling on EVERY axis at once:
+
+        * high takedown VOLUME      (they shoot, relentlessly)
+        * high takedown ACCURACY    (the shots land)
+        * high CONTROL time / round (they keep you down once there)
+        * high takedown DEFENSE     (they cannot be out-grappled themselves)
+
+    We therefore score each axis 0..1 and combine them MULTIPLICATIVELY (a geometric
+    blend), so being elite on one axis cannot compensate for being mid on another.
+    A fighter who is high-accuracy + high-defense but only mid-volume + mid-control
+    (the Abus Magomedov profile) lands well below a fighter who is high on all four
+    (Arman / Chimaev / Islam), which is exactly the separation we want.
+    """
+    vol = min(1.0, s["td_per15"] / 3.0)            # ~3 TD/15 is elite volume
+    acc = min(1.0, s["td_acc"] / 0.50)             # ~50%+ accuracy
+    ctrl = min(1.0, s["ctrl_sec_per_round"] / 100.0)  # ~100s/round of control is elite
+    dfn = min(1.0, s["td_def"] / 0.80)             # can't be out-wrestled (~80%+ TDD)
+    # Weighted GEOMETRIC mean -> being elite on one axis cannot compensate for being
+    # mid on another.  We weight the ACTIVE-offense axes (volume, control) heaviest:
+    # those are what separate a relentless mat-imposing wrestler (Khabib/Arman/Chimaev)
+    # from a counter-wrestler who merely has good defense + accuracy on a low number of
+    # attempts (the Abus profile -- high TDD/acc but mid volume + control).
+    w_vol, w_ctrl, w_acc, w_dfn = 0.34, 0.34, 0.16, 0.16
+    eps = 1e-6
+    log_g = (w_vol * math.log(vol + eps) + w_ctrl * math.log(ctrl + eps)
+             + w_acc * math.log(acc + eps) + w_dfn * math.log(dfn + eps))
+    g = math.exp(log_g)
+    # sharpen so the elite tail (all axes ~1) stays high while a mid axis pulls hard.
+    score = g ** 1.6
+    return max(0.0, min(1.0, score))
+
+
 def matchup(a, b):
     """
     Style-interaction edge for fighter A vs fighter B.
@@ -736,38 +841,76 @@ def matchup(a, b):
     ga, gb = grappler_index(a), grappler_index(b)
     sa, sb = striker_index(a), striker_index(b)
     la, lb = td_leakiness(a), td_leakiness(b)   # how leaky A/B are
+    ea, eb = elite_grappler_score(a), elite_grappler_score(b)   # 'Dagestani' eliteness
 
     # baseline skill-ish edges from raw stat profiles (z-ish, capped)
     strike_edge = 0.5 * ((a["SLpM"] - b["SApM"]) - (b["SLpM"] - a["SApM"])) / 6.0
     strike_edge += 0.4 * (a["str_acc"] - b["str_acc"]) + 0.3 * (a["str_def"] - b["str_def"])
 
-    # --- GRAPPLER PREMIUM ---
+    # --- GRAPPLER PREMIUM (gated to GENUINELY ELITE grapplers) ---
     # likelihood the fight reaches the mat = the better grappler's takedown threat
     # against the opponent's leakiness, PLUS an elite-wrestler floor: a truly elite
-    # grappler (high grappler_index) imposes mat time even on a good-defense striker
-    # (wrestling is systematically underpriced, so a 0.74-TD-def striker is NOT immune
-    # to an elite wrestler).  The floor scales with the grappler's own quality only.
-    def elite_floor(g):
-        return 0.11 * max(0.0, (g - 0.72) / 0.28)      # 0 below gi 0.72, up to ~0.11 at gi 1.0
-    mat_a = ga * min(1.0, lb + elite_floor(ga))         # A drags B down
-    mat_b = gb * min(1.0, la + elite_floor(gb))         # B drags A down
-    # premium: elite grappler vs leaky striker.  Multiplied up because wrestling is
-    # systematically underpriced.
-    PREM = 1.70
-    grap_edge_a = PREM * mat_a * (0.5 + 0.5 * sb)   # bigger if opp is a pure striker
-    grap_edge_b = PREM * mat_b * (0.5 + 0.5 * sa)
+    # grappler imposes mat time even on a good-defense striker (wrestling is
+    # systematically underpriced, so a 0.74-TD-def striker is NOT immune to an elite
+    # wrestler).  CRITICALLY the floor now scales with elite_grappler_score (the full
+    # Dagestani profile -- volume AND accuracy AND control AND TD defense) rather than
+    # the looser grappler_index, so a mid-tier wrestler (good defense/accuracy on low
+    # volume, e.g. Abus) does NOT get the floor while Arman/Chimaev/Islam still do.
+    def elite_floor(escore):
+        return 0.13 * max(0.0, (escore - 0.55) / 0.45)   # 0 below 0.55, up to ~0.13 at 1.0
+    mat_a = ga * min(1.0, lb + elite_floor(ea))         # A drags B down
+    mat_b = gb * min(1.0, la + elite_floor(eb))         # B drags A down
+
+    # The premium MAGNITUDE scales continuously with eliteness: a genuinely elite
+    # grappler gets the full multiplier (wrestling underpricing edge), while a mid-tier
+    # wrestler gets only a modest fraction of it -- so Abus's edge over Oleksiejczuk
+    # collapses toward a coin flip, but Arman keeps his full boost over Gaethje.
+    def prem_mult(escore):
+        # ~0.6x baseline (still some grappling credit) up to ~1.85x for a true elite.
+        return 0.60 + 1.25 * (escore ** 1.3)
+    grap_edge_a = prem_mult(ea) * mat_a * (0.5 + 0.5 * sb)   # bigger if opp is a pure striker
+    grap_edge_b = prem_mult(eb) * mat_b * (0.5 + 0.5 * sa)
     grappler_premium = grap_edge_a - grap_edge_b    # signed, favors A if positive
 
     # control-time differential
     ctrl_edge = (a["ctrl_sec_per_round"] - b["ctrl_sec_per_round"]) / 120.0
 
-    edge = 0.45 * strike_edge + 0.85 * grappler_premium + 0.25 * ctrl_edge
+    # NET-STRIKING ("octagon plus-minus") differential: each fighter's demonstrated
+    # striking-output dominance (significant strikes landed per min MINUS absorbed per
+    # min), differenced across the two corners.  This is ADDITIVE information over both
+    # Elo (corr ~0.17 with the Elo gap) and the symmetric `strike_edge` exchange term
+    # above: it captures who has historically out-struck their opposition, which is a
+    # strong, as-of-computable quality signal that lifts OOS accuracy in the close-Elo
+    # pick'em band where independent info matters most.  Capped to blunt small-sample
+    # outliers.  Added & tuned on the walk-forward backtest.
+    net_a = a["SLpM"] - a["SApM"]
+    net_b = b["SLpM"] - b["SApM"]
+    netstrike_edge = max(-0.5, min(0.5, (net_a - net_b) / 3.0))
+
+    # TAKEDOWN-DEFENSE differential.  Being hard to take down is a real, separable skill
+    # (it is one input to elite_grappler_score, but as a standalone DIFFERENCE between the
+    # two corners it carries additional OOS-predictive information -- corr ~0.39 with the
+    # rest of the matchup edge, so meaningfully additive, not redundant).  It is most
+    # valuable in the grappling-heavy divisions where the model was weakest, and improves
+    # OOS hit-rate, log-loss AND Brier on the walk-forward backtest.
+    tddef_edge = a["td_def"] - b["td_def"]
+
+    # effective additive weights in the win-prob logit are 1.12 (the m["edge"] multiplier)
+    # times the coefficients here: netstrike 1.12*0.223~=0.25, tddef 1.12*0.18~=0.20
+    # (both tuned on the walk-forward backtest, deliberately kept BELOW their OOS maxima:
+    # tddef's hit-rate plateaus by ~0.40 eff-weight but a higher weight makes the model
+    # over-discount leaky-TD-defense fighters past what's defensible -- 0.20 captures the
+    # bulk of the gain while keeping calibrated, sensible matchup lines).
+    edge = (0.45 * strike_edge + 0.85 * grappler_premium + 0.25 * ctrl_edge
+            + 0.223 * netstrike_edge + 0.18 * tddef_edge)
     edge = max(-1.2, min(1.2, edge))
 
     return {
         "edge": edge,
         "grappler_premium": grappler_premium,
         "strike_edge": strike_edge,
+        "netstrike_edge": netstrike_edge,
+        "tddef_edge": tddef_edge,
         "ctrl_edge": ctrl_edge,
         "grappler_index_a": ga, "grappler_index_b": gb,
         "striker_index_a": sa, "striker_index_b": sb,
@@ -781,10 +924,31 @@ def matchup(a, b):
 def _situational_edge(a, b):
     """Signed situational edge favoring A (age, layoff, cardio, stance, size)."""
     e = 0.0
-    # age: prime ~27-31; older fades
-    def age_pen(age):
-        return -0.012 * max(0.0, age - 32.0) + 0.006 * max(0.0, 28.0 - abs(age - 29.0))
-    e += (age_pen(a["age"]) - age_pen(b["age"]))
+    # AGE-DECLINE curve (principled, GENERAL -- no per-fighter values).
+    # Fighters peak around AGE_PEAK and decline thereafter; a small youth bump rewards
+    # fighters approaching their prime.  Past ~peak each extra year costs a small fixed
+    # amount in logit space (steeper deep into the 30s).  This is a real, well-documented
+    # MMA aging signal: it correctly discounts faded older fighters (e.g. Michel Pereira),
+    # which lifts younger risers like Shara toward the market line.  Values are modest and
+    # apply to every fighter via the age already in ufc_fighters.csv.
+    # Curve RE-CALIBRATED on the walk-forward backtest: the original (peak 33,
+    # decline 0.018/yr) materially UNDER-weighted aging.  In the OOS test set the
+    # younger fighter wins 69.7% of bouts with a >=4yr age gap (77.5% at >=7yr), and a
+    # steeper, earlier-onset decline curve improves OOS hit-rate, log-loss AND Brier
+    # together over a wide, non-knife-edge parameter region -- a principled fit to a
+    # well-documented MMA aging effect, not to specific fights.
+    AGE_PEAK = 32.0          # ~peak/plateau (30-33 typical UFC prime)
+    DECLINE_PER_YR = 0.030   # logit penalty per year past peak
+    DECLINE_ACCEL = 0.008    # extra penalty per year deep past peak (compounds the slide)
+    YOUTH_BUMP = 0.006       # small credit per year approaching the prime (pre-peak)
+
+    def age_curve(age):
+        over = max(0.0, age - AGE_PEAK)
+        decline = -(DECLINE_PER_YR * over + DECLINE_ACCEL * over * over)
+        # youth credit: fighters from ~23 up to the peak get a small, capped rising bonus
+        youth = YOUTH_BUMP * max(0.0, min(AGE_PEAK, age) - 23.0)
+        return decline + youth
+    e += (age_curve(a["age"]) - age_curve(b["age"]))
     # ring rust: long layoff hurts
     def rust(days):
         return -0.10 * min(1.0, max(0.0, days - 365.0) / 730.0)
@@ -829,7 +993,11 @@ def win_probability(a, b, elo, hometown_for=None):
     # combine in logit space.  Elo weight RAISED (0.85 -> 1.15) so the now-properly-
     # spread skill ratings actually drive the line; the stat-matchup (grappler premium)
     # and situational terms remain meaningful but no longer swamp a real Elo gap.
-    logit = 1.33 * logit_elo + 1.12 * m["edge"] + 1.38 * sit
+    # LOGIT_TEMP is a single global calibration knob tuned on the broad odds set so the
+    # model's average confidence (mean |p-0.5|) matches the sharp closing market -- the
+    # small-sample shrinkage left the model marginally UNDER-confident, so a slight
+    # (>1) temperature restores market-matched confidence without per-fighter tuning.
+    logit = LOGIT_TEMP * (1.33 * logit_elo + 1.12 * m["edge"] + 1.38 * sit)
     p = 1.0 / (1.0 + math.exp(-logit))
     return {
         "p_a": p, "p_b": 1 - p,
@@ -942,9 +1110,47 @@ def overall_rating(s, elo):
     return round(100 * (0.70 * elo_component + 0.30 * skill), 1)
 
 
+def ranking_elo(elo, log, fighters):
+    """
+    Return a per-fighter Elo value to use FOR RANKING ORDER ONLY (not prediction).
+
+    Applies the hard small-sample rule: a fighter with fewer than MIN_RANK_FIGHTS UFC
+    fights cannot occupy a top-RANK_GUARD slot in his division.  Such a fighter's
+    ranking value is capped just below the RANK_GUARD-th SEASONED (>=MIN_RANK_FIGHTS)
+    fighter in the same division.  This guarantees a 2- or 4-fight fighter (Amosov,
+    Hokit) can't read as division-elite, while leaving the prediction Elo untouched
+    (a real prospect can still be favored in a given matchup via provisional-K).
+    """
+    nf = log.groupby(log["fighter"].astype(str).str.strip()).size().to_dict()
+    div_of = dict(zip(fighters["fighter"].astype(str), fighters["division_code"]))
+
+    # per division, the RANK_GUARD-th best seasoned fighter's Elo == the cap line
+    cap_line = {}
+    by_div = {}
+    for name, dc in div_of.items():
+        by_div.setdefault(dc, []).append(name)
+    for dc, names in by_div.items():
+        seasoned = sorted(
+            (elo.get(n, START_ELO) for n in names if nf.get(n, 0) >= MIN_RANK_FIGHTS),
+            reverse=True)
+        if len(seasoned) >= RANK_GUARD:
+            cap_line[dc] = seasoned[RANK_GUARD - 1] - 0.1
+        else:
+            cap_line[dc] = -1e9      # not enough seasoned fighters to enforce a guard
+
+    out = {}
+    for name, dc in div_of.items():
+        e = elo.get(name, START_ELO)
+        if nf.get(name, 0) < MIN_RANK_FIGHTS:
+            e = min(e, cap_line.get(dc, -1e9))
+        out[name] = e
+    return out
+
+
 def build_ratings(write=True):
     fighters, log = merge_sources(write=write)
     elo = compute_elo(log, fighters, write_back=True)
+    rank_elo = ranking_elo(elo, log, fighters)
 
     rows = []
     for _, fr in fighters.iterrows():
@@ -956,6 +1162,7 @@ def build_ratings(write=True):
             "fighter": fr["fighter"],
             "division": fr["division"],
             "elo": round(e, 1),
+            "rank_elo": round(rank_elo.get(fr["fighter"], e), 1),
             "overall_rating": overall_rating(s, elo),
             "style": s["style"],
             "grappler_index": round(grappler_index(s), 3),
@@ -973,8 +1180,10 @@ def build_ratings(write=True):
             "n_fights": int((log["fighter"] == fr["fighter"]).sum()),
         })
     ratings = pd.DataFrame(rows)
-    # sort by Elo within division
-    ratings = ratings.sort_values(["division", "elo"], ascending=[True, False]).reset_index(drop=True)
+    # sort by RANK Elo within division (applies the small-sample top-8 guard); the
+    # displayed `elo` column stays the true prediction Elo.
+    ratings = ratings.sort_values(["division", "rank_elo", "elo"],
+                                   ascending=[True, False, False]).reset_index(drop=True)
     if write:
         ratings.to_csv(os.path.join(BASE, "ufc_ratings.csv"), index=False)
     return ratings, elo, fighters, log

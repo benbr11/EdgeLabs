@@ -43,6 +43,11 @@ def recalibrate(p, T=WINPROB_TEMP):
     z = math.log(p / (1 - p)) / T
     return 1.0 / (1.0 + math.exp(-z))
 
+# Near-pick'em ABSTAIN band (validated OOS in backtest_nhl.py). Projected goal margin below
+# ABSTAIN_MARGIN -> shrink the win prob toward 0.50 by ABSTAIN_SHRINK and flag graded=False.
+ABSTAIN_MARGIN = 0.20
+ABSTAIN_SHRINK = 1.0
+
 def rest_factor(days):
     # 2nd night of a back-to-back (0-1 days) hurts; well-rested (3+) is neutral-to-fresh
     if days is None: return 1.0
@@ -84,8 +89,18 @@ def predict(home, away, goalieH=None, goalieA=None, restH=2, restA=2,
     fav = pH / (pH + pA) if pH + pA else 0.5
     winH = pH + pT * (0.5 + (fav - 0.5) * 0.35)    # ties -> OT/SO, slight favourite edge
     winH = recalibrate(winH)                       # soften OOS-overconfident scale toward 0.5
+    # ABSTAIN / regress the near-pick'em band (validated OOS fix, backtest_nhl.py change #3).
+    # Games whose projected goal margin |lh-la| is below ABSTAIN_MARGIN are a coin flip the
+    # model genuinely cannot call: in the n=2792 walk-forward backtest that band hit only
+    # ~42-46% (worse than 50%). We shrink those toward 0.50 (graded=False) and surface the
+    # flag so callers can ABSTAIN. Excluding the band lifts the graded straight-up hit-rate
+    # to ~57% (from 55.5% over all games). Byte-identical to backtest_nhl.py.
+    graded = True
+    if ABSTAIN_MARGIN > 0.0 and abs(lh - la) < ABSTAIN_MARGIN:
+        winH = 0.5 + (winH - 0.5) * (1.0 - ABSTAIN_SHRINK)
+        graded = False
     return {"lh": lh, "la": la, "winH": winH, "winA": 1 - winH, "regH": pH, "regT": pT, "regA": pA,
-            "over": over, "pl_home": pl_home}
+            "over": over, "pl_home": pl_home, "graded": graded}
 
 def show(home, away, **kw):
     r = predict(home, away, **kw)
@@ -95,6 +110,7 @@ def show(home, away, **kw):
     if kw.get("restH") is not None and kw["restH"] <= 1: tags.append(f"{home} B2B")
     if kw.get("restA") is not None and kw["restA"] <= 1: tags.append(f"{away} B2B")
     if kw.get("availH", 1) < 1: tags.append(f"{home} avail {kw['availH']}")
+    if not r.get("graded", True): tags.append("PICK'EM->ABSTAIN")
     print(f"{home} vs {away}" + (f"  [{', '.join(tags)}]" if tags else ""))
     print(f"  exp goals {r['lh']:.2f}-{r['la']:.2f} | {home} win {r['winH']*100:.0f}% / {away} {r['winA']*100:.0f}% "
           f"| over 5.5 {r['over'][5.5]*100:.0f}% over 6.5 {r['over'][6.5]*100:.0f}% | {home} -1.5 {r['pl_home']*100:.0f}%")

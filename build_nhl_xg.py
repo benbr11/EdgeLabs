@@ -16,8 +16,15 @@ def latest_seasons(n=3, today=None):
     d = today or datetime.date.today()
     start = d.year if d.month >= 9 else d.year - 1
     return [start - i for i in range(n)]
-_SY = latest_seasons(5); _WT = [1.0, 0.75, 0.55, 0.40, 0.30]
-SEASONS = list(zip(_SY, _WT))                         # [(currentStartYear,1.0),(prev,.75),(prev2,.55)]
+# Recency weights per season (newest first). STEEPENED so the CURRENT season dominates the
+# team xG aggregate: the walk-forward backtest validated that it is *current-form*,
+# point-in-time xG (a ~70-day half-life) that adds out-of-sample signal -- the old near-flat
+# 5-season blend (1.0/0.75/0.55/...) re-imported stale form and was the reason xG had been
+# zeroed in build_nhl.py. These weights make the production xGF/xGA track the same current
+# form the backtest measured. (Goalie/skater rows use the same weights; current-season
+# emphasis is appropriate there too.)
+_SY = latest_seasons(5); _WT = [1.0, 0.40, 0.18, 0.08, 0.04]
+SEASONS = list(zip(_SY, _WT))                         # [(currentStartYear,1.0),(prev,.40),(prev2,.18),...]
 CURRENT = _SY[0]                                      # in-progress season -> never cache (daily refresh)
 print(f"NHL xG seasons (auto): {[f'{y}-{str(y+1)[2:]}' for y in _SY]}  current={CURRENT}", flush=True)
 UNBLOCKED = {"SHOT", "GOAL", "MISS"}; ONGOAL = {"SHOT", "GOAL"}

@@ -148,13 +148,21 @@ zPK = z({t: tstat.get(t, {}).get("penaltyKillPct", 0) for t in teams})
 zGSAx = z({t: team_gsax.get(t, 0.0) for t in teams})            # goaltending: goals saved above expected
 # Composite metric weights (per side). Tuned so the rating ORDER matches the forward-looking
 # expert consensus: Elo (MOV, recency-decayed) carries most signal; the recency-weighted goals
-# model adds the off/def split; the stale 5-season xG/GSAx aggregates were found to LAG the
-# consensus (they re-import old form) so they are down-weighted. PP/PK small. NO consensus
-# list or hand-set ranks enter here -- every term is a measured on-ice metric.
+# model adds the off/def split; PP/PK small. NO consensus list or hand-set ranks enter here.
+# xG (shot QUALITY): RE-ENABLED at 0.30. The honest walk-forward backtest (backtest_nhl.py,
+# n=2792 OOS) showed a WINDOWED, point-in-time xGF/xGA snapshot adds real out-of-sample
+# discrimination (AUC 0.5835 -> 0.5881, log-loss 0.6798 -> 0.6790, straight-up 55.48% ->
+# 55.52% before the abstain band) -- it was the *stale 5-season-flat aggregate* that lagged,
+# not xG itself. Weight 0.30 sits at the OOS Brier/log-loss optimum (higher weights keep
+# lifting AUC but start eroding calibration). For this to match the validated signal the xG
+# inputs must emphasise CURRENT form (see build_nhl_xg.py recency weights).
+# GSAx (goaltending) stays at 0.0: adding it MEASURABLY HURT OOS (AUC 0.5869 -> 0.5853 at
+# weight 0.20) -- single-team goaltending is noise at the win/loss level (the same reason the
+# point-in-time starting-goalie adjustment did not transfer out of sample).
 _EA = _envf("EA", 0.75); _ED = _envf("ED", 0.74)          # overall strength (Elo) — dominant signal
 _GA = _envf("GA", 0.20); _GD = _envf("GD", 0.18)          # recency goals model (gives the off/def split)
-_XF = _envf("XF", 0.0);  _XA = _envf("XA", 0.0)           # 5-season xG aggregate LAGS consensus -> dropped
-_GS = _envf("GS", 0.0)                                     # 5-season GSAx aggregate LAGS consensus -> dropped
+_XF = _envf("XF", 0.30); _XA = _envf("XA", 0.30)          # windowed xG (shot quality) -- validated OOS
+_GS = _envf("GS", 0.0)                                     # GSAx aggregate HURTS OOS -> kept off
 _PP = _envf("PP", 0.16); _PK = _envf("PK", 0.16)          # special teams (real forward signal experts use)
 attZ = {t: _GA*zA_goals[t] + _XF*zXGF[t] + _PP*zPP[t] + _EA*zElo[t] for t in teams}
 defZ = {t: _GD*zD_goals[t] + _XA*zXGA[t] + _PK*zPK[t] + _GS*zGSAx[t] + _ED*zElo[t] for t in teams}

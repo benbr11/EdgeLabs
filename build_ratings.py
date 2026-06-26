@@ -204,12 +204,14 @@ for iteration in range(60):
 
 # Home advantage. It cannot be cleanly separated from attack/defense in this
 # dataset (every match's home side is a different team, so a fit just absorbs the
-# effect into the ratings). We therefore use the well-established football-modeling
-# value: a host scores ~30% more goals (~+0.4 on a ~1.4 base). Applied ONLY to a
-# designated host team in simulate.py; tune via this constant. The raw observed
-# home/away goal ratio is printed for reference (it is inflated by scheduling --
-# strong teams host weak ones in qualifiers -- so we do not use it directly).
-HOME_ADV = 1.30
+# effect into the ratings). Applied ONLY to a designated host team in simulate.py.
+# Tuned via backtest.py's HOME-ADVANTAGE experiment: across 52 historical host
+# group matches, host-only log-loss is minimised at a host goal-rate multiplier of
+# ~1.10-1.20 (0.847) and every leave-one-tournament-out fold votes below 1.30, so we
+# use 1.15 -- lower than the textbook ~1.30 (which the data shows is too strong for
+# major-tournament hosts). The raw observed home/away goal ratio is printed for
+# reference (it is inflated by scheduling -- strong teams host weak ones in qualifiers).
+HOME_ADV = 1.15
 hg = ag = 0.0
 for d, h, a, hs, as_, neutral, eh, ea, wb in recent:
     if neutral: continue

@@ -44,6 +44,19 @@ HEAT_BUFFER_C = 8
 WEATHER_GOALS = {"clear":1.0, "rain":0.90, "cold":0.95, "heat":0.93}
 RHO = -0.12  # Dixon-Coles low-score correction (tuned via backtest.py); <0 lifts draws & 0-0/1-1
 VAR_BASE, VAR_SLOPE = 6.0, 0.34  # variance-by-rating: NegBin dispersion grows with rating (weak teams = more volatile)
+# Probability calibration (temperature). The raw goals+Elo Dixon-Coles engine is
+# OVER-confident at the top end (backtest.py leave-one-tournament-out CV: the model
+# claims ~0.85 where reality is ~0.62 in the 0.8-0.9 bucket). A temperature T>1
+# softens the W/D/L (and knockout advance) probabilities -- p_i -> p_i**(1/T),
+# renormalised -- which improves out-of-sample log-loss/Brier without changing the
+# pick (monotonic). T=1.3 = median of the LOTO per-fold fits (range 1.20-1.40);
+# OOS pooled log-loss 0.9835 -> 0.9779. Tune via backtest.py's calibration block.
+CALIB_T = 1.30
+def calibrate(probs, T=CALIB_T):
+    """Temperature-scale a probability vector (fractions summing to 1)."""
+    if T == 1.0: return list(probs)
+    q = [max(p, 1e-12) ** (1.0 / T) for p in probs]; s = sum(q)
+    return [x / s for x in q]
 
 ALIASES = {
     "usa":"United States","us":"United States","america":"United States",
@@ -186,6 +199,9 @@ def main():
     pA = 100*sum(M[i][j] for i in rng for j in rng if i > j)
     pB = 100*sum(M[i][j] for i in rng for j in rng if j > i)
     pD = 100*sum(M[i][i] for i in rng)
+    # temperature-calibrate the W/D/L probabilities (cures over-confidence; see CALIB_T).
+    # exA/exB are score expectations from the raw matrix and are left uncalibrated.
+    pA, pD, pB = (100*x for x in calibrate((pA/100.0, pD/100.0, pB/100.0)))
     exA = sum(i*sum(M[i]) for i in rng)
     exB = sum(j*sum(M[i][j] for i in rng) for j in rng)
     flat = sorted(((M[i][j], (i,j)) for i in rng for j in rng), reverse=True)

@@ -214,3 +214,49 @@ print("TOP 6 teams (run diff):", [f"{t}" for t in order[:6]])
 print("BEST 5 SP (RA9, >=120ip-total):", [f"{n} {pitchers[n]['ra9']}" for n in sorted([n for n in pitchers if pw_ip[n]>=120], key=lambda n:pitchers[n]['ra9'])[:5]])
 print("TOP 6 hitters (OPS):", [f"{n} {hitters[n]['ops']}" for n in sorted(hitters, key=lambda n:-hitters[n]['ops'])[:6]])
 print("Wrote mlb_ratings.csv, mlb_pitchers.csv, mlb_hitters.csv")
+
+# ---- 4. DAY-OF SIGNAL: bullpen fatigue (KEPT OOS winner, see backtest_mlb.py / mlb_signals.py) ----
+# The ONLY day-of signal that improved OOS (SU 56.50%->56.66%, Brier/LL down, both seasons).
+# It is a PER-GAME prediction-time multiplier, not a static rating, so we emit each team's
+# CURRENT as-of bullpen-fatigue scalar (relief IP over the trailing PEN_LOOKBACK_DAYS, decoded
+# from baseball X.1/X.2 notation, normalized identically to the backtest) into mlb_bullpen.csv.
+# A predictor applies mlb_signals.bullpen_factor(home_fat, away_fat) to (lh, la) -- byte-identical
+# math to backtest_mlb.py because both import mlb_signals. Park/weather/platoon were REVERTED.
+import mlb_signals as _sig
+def _ip_to_outs(ip):  # MLB IP X.1=+1/3, X.2=+2/3 (not decimal) -> true innings (matches backtest)
+    whole=int(ip); frac=round(ip-whole,1); thirds=1 if frac==0.1 else (2 if frac==0.2 else 0)
+    return whole+thirds/3.0
+try:
+    _cur_sched = get(f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate={CUR}-03-01&endDate={CUR}-11-15&gameType=R&hydrate=team")
+    _last = None; _games_by_pk = []
+    for _dd in _cur_sched.get("dates", []):
+        for _g in _dd.get("games", []):
+            if _g.get("status", {}).get("detailedState") != "Final": continue
+            _d = _g.get("officialDate") or _g.get("gameDate", "")[:10]
+            _t = _g.get("teams", {})
+            try: _h = fn(_t["home"]["team"]["name"]); _a = fn(_t["away"]["team"]["name"])
+            except KeyError: continue
+            _games_by_pk.append((_g.get("gamePk"), _d, _h, _a))
+            if _last is None or _d > _last: _last = _d
+    _relief = collections.defaultdict(float)   # team -> relief IP over the trailing window ending at _last
+    if _last:
+        _lo = (datetime.date.fromisoformat(_last) - datetime.timedelta(days=_sig.PEN_LOOKBACK_DAYS)).isoformat()
+        for _pk, _d, _h, _a in _games_by_pk:
+            if not (_lo <= _d <= _last) or not _pk: continue
+            try: _bx = get(f"https://statsapi.mlb.com/api/v1/game/{_pk}/boxscore")
+            except Exception: continue
+            for _side, _team in (("home", _h), ("away", _a)):
+                _s = _bx.get("teams", {}).get(_side, {}); _pl = _s.get("players", {})
+                for _pid in (_s.get("pitchers") or [])[1:]:   # skip starter (index 0)
+                    _st = _pl.get(f"ID{_pid}", {}).get("stats", {}).get("pitching", {})
+                    try: _relief[_team] += _ip_to_outs(float(_st.get("inningsPitched", 0) or 0))
+                    except (ValueError, TypeError): pass
+    with open(PROJ+r"\mlb_bullpen.csv","w",newline="",encoding="utf-8") as f:
+        w=csv.writer(f); w.writerow(["team","relief_ip_3d","pen_fatigue","as_of","lookback_days","pen_w"])
+        for t in sorted(teams):
+            _rip = round(_relief.get(t, 0.0), 2)
+            _fat = round(_rip / (_sig.PEN_LOOKBACK_DAYS * 3.0), 4)   # identical normalization to backtest
+            w.writerow([t, _rip, _fat, _last or "", _sig.PEN_LOOKBACK_DAYS, _sig.PEN_W])
+    print(f"Wrote mlb_bullpen.csv (as-of {_last}, lookback {_sig.PEN_LOOKBACK_DAYS}d, PEN_W={_sig.PEN_W})")
+except Exception as _e:
+    print(f"  bullpen-fatigue emit skipped ({_e})", flush=True)

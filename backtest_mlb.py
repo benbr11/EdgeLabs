@@ -41,10 +41,14 @@ Outputs: headline OOS winner hit-rate, calibration table, Brier / log-loss, trus
 table, per-team accuracy, and an honest strong/weak read.
 """
 import json, os, math, urllib.request, datetime, collections, time
+import mlb_signals
 
 PROJ = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(PROJ, "backtest_mlb_cache.json")
 CONSENSUS = os.path.join(PROJ, "consensus_mlb.csv")
+ENRICH = os.path.join(PROJ, "mlb_enrich_cache.json")
+BOX = os.path.join(PROJ, "mlb_box_cache.json")
+PLATOON = os.path.join(PROJ, "mlb_platoon_cache.json")
 
 # ---- match build_mlb.py tunables exactly ----
 SW_HL = 0.70          # season-recency halflife
@@ -334,7 +338,8 @@ def _pois(k, l):
     return math.exp(-l) * l ** k / math.factorial(k)
 
 
-def predict_winp(att, dfn, AVG, HOME, home, away, f_home_sp, f_away_sp):
+def base_rates(att, dfn, AVG, HOME, home, away, f_home_sp, f_away_sp):
+    """Pre-signal expected runs (lh, la) after SP adjustment. Returns None if teams unknown."""
     if home not in att or away not in att:
         return None
     _hs = math.sqrt(HOME)                          # symmetric home split: preserves total runs
@@ -345,6 +350,11 @@ def predict_winp(att, dfn, AVG, HOME, home, away, f_home_sp, f_away_sp):
         lh *= adj(f_away_sp)
     if f_home_sp:  # home starter suppresses away runs
         la *= adj(f_home_sp)
+    return lh, la
+
+
+def winp_from_rates(lh, la):
+    """Poisson score grid -> temperature-calibrated home win probability."""
     lh = max(0.5, lh); la = max(0.5, la)
     pH = pT = pA = 0.0
     for i in range(16):
@@ -362,6 +372,145 @@ def predict_winp(att, dfn, AVG, HOME, home, away, f_home_sp, f_away_sp):
     return p
 
 
+def predict_winp(att, dfn, AVG, HOME, home, away, f_home_sp, f_away_sp, sig=None):
+    br = base_rates(att, dfn, AVG, HOME, home, away, f_home_sp, f_away_sp)
+    if br is None:
+        return None
+    lh, la = br
+    if sig:        # point-in-time day-of run-rate adjustments (mlb_signals; identity if all W=0)
+        lh, la = mlb_signals.apply_all(lh, la, park=sig.get("park"), weather=sig.get("weather"),
+                                       platoon=sig.get("platoon"), bullpen=sig.get("bullpen"))
+    return winp_from_rates(lh, la)
+
+
+# ----------------------------------------------------------------------------
+# 4b. DAY-OF SIGNAL DATA (point-in-time / as-of). Loaded from caches built by mlb_enrich.py.
+# ----------------------------------------------------------------------------
+def load_signal_data():
+    """Returns (enrich_idx, box, platoon) or (None, None, None) if caches absent."""
+    enrich_idx = box = platoon = None
+    if os.path.exists(ENRICH):
+        with open(ENRICH, encoding="utf-8") as f:
+            d = json.load(f)
+        enrich_idx = {}
+        for pk, e in d["by_pk"].items():
+            e["_pk"] = pk                              # stamp gamePk for boxscore lookup
+            enrich_idx[f"{e['date']}|{e['home']}|{e['away']}"] = e
+    if os.path.exists(BOX):
+        with open(BOX, encoding="utf-8") as f:
+            box = json.load(f)
+    if os.path.exists(PLATOON):
+        with open(PLATOON, encoding="utf-8") as f:
+            platoon = json.load(f)
+    return enrich_idx, box, platoon
+
+
+def build_park_factors(games_sorted, enrich_idx):
+    """Trailing park factor per (venue, season) using ONLY PRIOR seasons (strictly as-of):
+    PF[venue, S] = (mean runs/game at venue over seasons in [S-3, S-1]) / (league mean over
+    the same prior seasons). Returns dict {(venue_name, season): pf}. Falls back to 1.0."""
+    if not enrich_idx:
+        return {}
+    # raw per (venue, season) runs/games and league runs/games
+    vr = collections.defaultdict(lambda: [0.0, 0])
+    lg = collections.defaultdict(lambda: [0.0, 0])
+    seasons = set()
+    for g in games_sorted:
+        e = enrich_idx.get(f"{g['date']}|{g['home']}|{g['away']}")
+        if not e or not e.get("venue_name"):
+            continue
+        s = g["season"]; runs = g["hs"] + g["as"]; vn = e["venue_name"]
+        vr[(vn, s)][0] += runs; vr[(vn, s)][1] += 1
+        lg[s][0] += runs; lg[s][1] += 1
+        seasons.add(s)
+    venues = {vn for (vn, s) in vr}
+    pf = {}
+    for s in seasons:
+        prior = [y for y in seasons if s - 3 <= y <= s - 1]
+        lg_runs = sum(lg[y][0] for y in prior); lg_g = sum(lg[y][1] for y in prior)
+        lg_rpg = (lg_runs / lg_g) if lg_g else None
+        for vn in venues:
+            vrun = sum(vr[(vn, y)][0] for y in prior if (vn, y) in vr)
+            vg = sum(vr[(vn, y)][1] for y in prior if (vn, y) in vr)
+            if vg >= 60 and lg_rpg:                     # need ~a season of prior data
+                raw = (vrun / vg) / lg_rpg
+                # regress toward 1.0 (park factors are noisy at 1-3 seasons)
+                w = min(1.0, vg / 240.0)
+                pf[(vn, s)] = 1.0 + w * (raw - 1.0)
+            else:
+                pf[(vn, s)] = 1.0
+    return pf
+
+
+def league_platoon_baselines(platoon):
+    """League mean OPS vs LHP and vs RHP per season (for centering the platoon edge)."""
+    base = {}
+    if not platoon:
+        return base
+    agg = collections.defaultdict(lambda: {"vl": [], "vr": []})
+    for key, sp in platoon.get("team_split", {}).items():
+        try:
+            season = int(key.rsplit("|", 1)[1])
+        except (ValueError, IndexError):
+            continue
+        if sp.get("vl"):
+            agg[season]["vl"].append(sp["vl"])
+        if sp.get("vr"):
+            agg[season]["vr"].append(sp["vr"])
+    for s, d in agg.items():
+        base[s] = (sum(d["vl"]) / len(d["vl"]) if d["vl"] else None,
+                   sum(d["vr"]) / len(d["vr"]) if d["vr"] else None)
+    return base
+
+
+def _ip_to_outs(ip):
+    """MLB IP is recorded as X.1 (=X+1/3) or X.2 (=X+2/3), NOT decimal. Convert to true innings."""
+    whole = int(ip)
+    frac = round(ip - whole, 1)
+    thirds = 1 if frac == 0.1 else (2 if frac == 0.2 else 0)
+    return whole + thirds / 3.0
+
+
+def precompute_relief_ip(box, enrich_idx, games_sorted):
+    """Per (team, date) relief innings thrown in THAT game (starter excluded). Returns
+    {team: [(date_iso, relief_ip), ...] sorted}. O(N) once; windowed sums are then cheap.
+    IP is decoded from baseball X.1/X.2 notation to true innings."""
+    by_team = collections.defaultdict(list)
+    if not box or not enrich_idx:
+        return by_team
+    for g in games_sorted:
+        e = enrich_idx.get(f"{g['date']}|{g['home']}|{g['away']}")
+        if not e:
+            continue
+        rec = box.get(str(e.get("_pk")))
+        if not rec:
+            continue
+        for side, team in (("home", g["home"]), ("away", g["away"])):
+            lst = rec.get(side, [])
+            rip = sum(_ip_to_outs(ip) for _, ip in lst[1:])   # skip starter (index 0)
+            by_team[team].append((g["date"], rip))
+    for t in by_team:
+        by_team[t].sort()
+    return by_team
+
+
+def bullpen_fatigue(relief_idx, team, game_date, lookback_days=3):
+    """Recent reliever IP load for `team` in the lookback_days calendar days STRICTLY before
+    game_date (as-of). Normalized: 0 = rested, ~1 = heavily worked."""
+    rows = relief_idx.get(team)
+    if not rows:
+        return 0.0
+    gd = datetime.date.fromisoformat(game_date)
+    lo = (gd - datetime.timedelta(days=lookback_days)).isoformat()
+    relief_ip = 0.0
+    for d, rip in rows:
+        if d >= game_date:
+            break                                     # rows sorted; nothing later qualifies
+        if d >= lo:
+            relief_ip += rip
+    return relief_ip / (lookback_days * 3.0)
+
+
 # ----------------------------------------------------------------------------
 # 5. WALK-FORWARD over the test window
 # ----------------------------------------------------------------------------
@@ -376,6 +525,13 @@ def run_backtest(games, plogs, test_seasons, crank):
     preds = []           # (winp_home, home_won, home, away, season, conf)
     rating_cache = {}    # (cur_season, monday) -> ratings tuple
     skipped = 0
+    # ---- day-of signal data (point-in-time). All identity-safe if caches absent / W=0. ----
+    enrich_idx, box, platoon = load_signal_data()
+    park_pf = build_park_factors(games_sorted, enrich_idx)
+    relief_idx = precompute_relief_ip(box, enrich_idx, games_sorted)
+    lg_plat = league_platoon_baselines(platoon)
+    hand = (platoon or {}).get("hand", {})
+    tsplit = (platoon or {}).get("team_split", {})
     # league RA9 prior, recomputed per season cutoff (use a stable approx from prior season runs)
     for n, g in enumerate(test):
         cutoff_monday = monday_of(g["date"])
@@ -406,15 +562,57 @@ def run_backtest(games, plogs, test_seasons, crank):
         # it only uses that pitcher's own prior starts -> no leakage)
         f_home_sp = pitcher_factor(g["ph_id"], plogs, g["date"], cur_season, lg_ra9) if g["ph_id"] else None
         f_away_sp = pitcher_factor(g["pa_id"], plogs, g["date"], cur_season, lg_ra9) if g["pa_id"] else None
-        winp = predict_winp(att2, dfn2, AVG, HOME, g["home"], g["away"], f_home_sp, f_away_sp)
+        # ---- assemble point-in-time day-of signals (identity when their W knob is 0) ----
+        e = enrich_idx.get(f"{g['date']}|{g['home']}|{g['away']}") if enrich_idx else None
+        sig, meta = build_game_signals(g, e, cur_season, park_pf, relief_idx, hand, tsplit, lg_plat)
+        winp = predict_winp(att2, dfn2, AVG, HOME, g["home"], g["away"], f_home_sp, f_away_sp, sig)
         if winp is None:
             skipped += 1; continue
         home_won = 1 if g["hs"] > g["as"] else 0
-        preds.append({"winp": winp, "home_won": home_won, "home": g["home"],
-                      "away": g["away"], "season": cur_season})
+        rec = {"winp": winp, "home_won": home_won, "home": g["home"],
+               "away": g["away"], "season": cur_season, "date": g["date"]}
+        rec.update(meta)                              # signal inputs + context for segmentation
+        preds.append(rec)
         if (n + 1) % 500 == 0:
             print(f"  scored {n+1}/{len(test)} games", flush=True)
     return preds, skipped
+
+
+def build_game_signals(g, e, cur_season, park_pf, relief_idx, hand, tsplit, lg_plat):
+    """Compute the day-of signal multiplier tuples + a metadata dict (signal inputs and game
+    context: venue, dayNight, weather, handedness, fatigue, park factor) for segmentation.
+    All inputs are strictly as-of (prior-season splits, prior-day fatigue, gametime weather)."""
+    meta = {"venue": None, "dayNight": None, "roof": None, "temp": None, "wind_mph": None,
+            "wind_dir": None, "park_pf": 1.0, "away_sp_hand": None, "home_sp_hand": None,
+            "home_pen_fat": 0.0, "away_pen_fat": 0.0}
+    park = weather = platoon = bullpen = None
+    # park factor (trailing prior seasons)
+    if e and e.get("venue_name"):
+        pf = park_pf.get((e["venue_name"], cur_season), 1.0)
+        meta["park_pf"] = pf; meta["venue"] = e["venue_name"]
+        park = mlb_signals.park_factor(pf)
+    # weather (outdoor only)
+    if e:
+        meta["dayNight"] = e.get("dayNight"); meta["roof"] = e.get("roof")
+        meta["temp"] = e.get("temp"); meta["wind_mph"] = e.get("wind_mph"); meta["wind_dir"] = e.get("wind_dir")
+        weather = mlb_signals.weather_factor(e.get("temp"), e.get("wind_mph"),
+                                             e.get("wind_dir"), e.get("roof"))
+    # platoon: PRIOR-season team splits + starter handedness
+    ah = hand.get(str(g.get("pa_id"))) if g.get("pa_id") else None
+    hh = hand.get(str(g.get("ph_id"))) if g.get("ph_id") else None
+    meta["away_sp_hand"] = ah; meta["home_sp_hand"] = hh
+    hs_split = tsplit.get(f"{g['home']}|{cur_season-1}")
+    as_split = tsplit.get(f"{g['away']}|{cur_season-1}")
+    lvl, lvr = lg_plat.get(cur_season - 1, (None, None))
+    platoon = mlb_signals.platoon_factor(hs_split, as_split, ah, hh, lvl, lvr)
+    # bullpen fatigue (prior N-day relief IP; N from mlb_signals, OOS-tuned to 3)
+    _ld = mlb_signals.PEN_LOOKBACK_DAYS
+    hpf = bullpen_fatigue(relief_idx, g["home"], g["date"], _ld)
+    apf = bullpen_fatigue(relief_idx, g["away"], g["date"], _ld)
+    meta["home_pen_fat"] = hpf; meta["away_pen_fat"] = apf
+    bullpen = mlb_signals.bullpen_factor(hpf, apf)
+    sig = {"park": park, "weather": weather, "platoon": platoon, "bullpen": bullpen}
+    return sig, meta
 
 
 # ----------------------------------------------------------------------------

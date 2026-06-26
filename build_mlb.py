@@ -16,6 +16,33 @@ fn = lambda n: NAMEFIX.get(n, n)
 def seasons(n=5, today=None): d = today or datetime.date.today(); return list(range(d.year, d.year - n, -1))
 SEASONS = seasons(5); CUR = SEASONS[0]
 _E = lambda k, d: float(os.environ.get(k, d))
+def _pois(k, l): return math.exp(-l) * l ** k / math.factorial(k)
+def _even_home_winp(H, avg):
+    # home win prob at an EVEN matchup under symmetric split lh=avg*sqrt(H), la=avg/sqrt(H)
+    s = math.sqrt(H); lh = avg * s; la = avg / s
+    pH = pT = pA = 0.0
+    for i in range(16):
+        for j in range(16):
+            m = _pois(i, lh) * _pois(j, la)
+            if i > j: pH += m
+            elif i == j: pT += m
+            else: pA += m
+    share = lh / (lh + la)
+    return (pH + pT * share) / (pH + pT * share + pA + pT * (1 - share))
+def home_mult(hwf, avg, prior, prior_w):
+    # Estimate the SYMMETRIC home multiplier H reproducing observed home-win-fraction hwf
+    # (via Poisson inversion), then regress toward `prior` with weight prior_w. H>=1.
+    hwf = min(0.62, max(0.50, hwf))               # guard against degenerate small samples
+    lo, hi = 1.0, 1.30
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        if _even_home_winp(mid, avg) < hwf: lo = mid
+        else: hi = mid
+    H_emp = (lo + hi) / 2
+    return max(1.0, (1 - prior_w) * H_emp + prior_w * prior)
+HOME_PRIOR = _E("MLB_HOME_PRIOR", 1.04)           # regression target for home-field multiplier
+HOME_PRIOR_W = _E("MLB_HOME_PRIOR_W", 0.25)       # weight on the prior vs the empirical estimate
+TEMP = _E("MLB_TEMP", 1.46)                        # global win-prob temperature (calibration; see backtest_mlb.py Fix 4)
 SW_HL = _E("MLB_SW_HL", 0.70)                           # season-recency halflife (smaller -> 2026 dominates harder)
 SW = {y: 0.5 ** ((CUR - y) / SW_HL) for y in SEASONS}   # sharp season recency: 2026 (in progress) dominates
 HALFLIFE = _E("MLB_HALFLIFE", 230.0)                    # game-level decay (shorter -> recent games / current form matter more)
@@ -53,13 +80,15 @@ ref = max(g[0] for g in games)
 # att/dfn solve while older seasons only stabilize small early-season samples.
 wt = lambda d, y: 0.5 ** ((ref - d).days / HALFLIFE) * SW.get(y, 0.05)
 teams = sorted({t for g in games for t in (g[1], g[2])})
-tw = tr = hr = ar = 0.0
+tw = tr = hr = ar = hw = gw = 0.0
 twsum = collections.defaultdict(float); twin = collections.defaultdict(float)  # recency-weighted games / wins per team
 for d, h, a, hs, as_, y in games:
     w = wt(d, y); tr += w*(hs+as_); tw += 2*w; hr += w*hs; ar += w*as_
+    hw += w*(1 if hs > as_ else 0); gw += w                 # weighted home wins / weighted games
     twsum[h] += w; twsum[a] += w
     twin[h] += w*(1 if hs > as_ else 0); twin[a] += w*(1 if as_ > hs else 0)
-AVG = tr/tw; HOME = min(1.10, max(1.0, hr/ar))
+AVG = tr/tw
+HOME = home_mult(hw/gw if gw else 0.532, AVG, HOME_PRIOR, HOME_PRIOR_W)  # symmetric, from home WIN rate
 att = {t: 1.0 for t in teams}; dfn = {t: 1.0 for t in teams}
 for _ in range(60):
     na={t:0. for t in teams}; da=dict(na); nd=dict(na); dd=dict(na)

@@ -58,9 +58,45 @@ BLEND_BASE = 0.40
 SEASON_LEN = 162.0
 # prediction SP blend (prosports_app.js): adj(f)=0.6*f+0.4
 SP_W = 0.6
+# symmetric home-field multiplier (estimated from home WIN rate, regressed toward prior)
+HOME_PRIOR = float(os.environ.get("MLB_HOME_PRIOR", 1.04))
+HOME_PRIOR_W = float(os.environ.get("MLB_HOME_PRIOR_W", 0.25))
+# global temperature on the win-prob log-odds (T>1 softens). Fit on 2024-25 train: ~1.46.
+# Improves OOS log-loss/Brier; STRAIGHT-UP picks are temperature-invariant.
+TEMP = float(os.environ.get("MLB_TEMP", 1.46))
+# Decaying-consensus prior is FUTURE-INFORMED in a 2024-25 backtest (a static 2026 preseason
+# ranking applied to past games) AND measured to slightly HURT OOS -> OFF for honest model-only
+# measurement. Set MLB_USE_CONSENSUS=1 to re-enable (matches the live blend_mlb.py post-process).
+USE_CONSENSUS = os.environ.get("MLB_USE_CONSENSUS", "0") == "1"
 
 NAMEFIX = {"Oakland Athletics": "Athletics"}
 fn = lambda n: NAMEFIX.get(n, n)
+
+
+def _pois_h(k, l): return math.exp(-l) * l ** k / math.factorial(k)
+def _even_home_winp(H, avg):
+    # home win prob at an EVEN matchup under symmetric split lh=avg*sqrt(H), la=avg/sqrt(H)
+    s = math.sqrt(H); lh = avg * s; la = avg / s
+    pH = pT = pA = 0.0
+    for i in range(16):
+        for j in range(16):
+            m = _pois_h(i, lh) * _pois_h(j, la)
+            if i > j: pH += m
+            elif i == j: pT += m
+            else: pA += m
+    share = lh / (lh + la)
+    return (pH + pT * share) / (pH + pT * share + pA + pT * (1 - share))
+def home_mult(hwf, avg, prior, prior_w):
+    # Estimate the SYMMETRIC home multiplier H reproducing observed home-win-fraction hwf
+    # (via Poisson inversion), then regress toward `prior` with weight prior_w. H>=1.
+    hwf = min(0.62, max(0.50, hwf))               # guard against degenerate small samples
+    lo, hi = 1.0, 1.30
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        if _even_home_winp(mid, avg) < hwf: lo = mid
+        else: hi = mid
+    H_emp = (lo + hi) / 2
+    return max(1.0, (1 - prior_w) * H_emp + prior_w * prior)
 
 
 def get(url, t=60, retries=3):
@@ -191,17 +227,18 @@ def compute_ratings(prior_games, cur_season):
         return 0.5 ** ((ref_d - gd).days / HALFLIFE) * SW.get(g["season"], 0.05)
 
     teams = sorted({t for g in prior_games for t in (g["home"], g["away"])})
-    tw = tr = hr = ar = 0.0
+    tw = tr = hr = ar = hw = gw = 0.0
     twsum = collections.defaultdict(float)
     twin = collections.defaultdict(float)
     for g in prior_games:
         w = wt(g); hs, as_ = g["hs"], g["as"]
         tr += w * (hs + as_); tw += 2 * w; hr += w * hs; ar += w * as_
+        hw += w * (1 if hs > as_ else 0); gw += w            # weighted home wins / weighted games
         twsum[g["home"]] += w; twsum[g["away"]] += w
         twin[g["home"]] += w * (1 if hs > as_ else 0)
         twin[g["away"]] += w * (1 if as_ > hs else 0)
     AVG = tr / tw
-    HOME = min(1.10, max(1.0, hr / ar))
+    HOME = home_mult(hw / gw if gw else 0.532, AVG, HOME_PRIOR, HOME_PRIOR_W)  # symmetric, from home WIN rate
 
     att = {t: 1.0 for t in teams}; dfn = {t: 1.0 for t in teams}
     for _ in range(60):
@@ -300,8 +337,9 @@ def _pois(k, l):
 def predict_winp(att, dfn, AVG, HOME, home, away, f_home_sp, f_away_sp):
     if home not in att or away not in att:
         return None
-    lh = AVG * att[home] * dfn[away] * HOME
-    la = AVG * att[away] * dfn[home]
+    _hs = math.sqrt(HOME)                          # symmetric home split: preserves total runs
+    lh = AVG * att[home] * dfn[away] * _hs
+    la = AVG * att[away] * dfn[home] / _hs
     adj = lambda f: (SP_W * f + (1 - SP_W)) if f else 1.0
     if f_away_sp:  # away starter suppresses home runs
         lh *= adj(f_away_sp)
@@ -318,8 +356,10 @@ def predict_winp(att, dfn, AVG, HOME, home, away, f_home_sp, f_away_sp):
     share = lh / (lh + la)
     winH = pH + pT * share
     winA = pA + pT * (1 - share)
-    s = winH + winA
-    return winH / s  # normalise out the tiny truncation mass
+    p = winH / (winH + winA)                       # normalise out the tiny truncation mass
+    if TEMP != 1.0 and 0.0 < p < 1.0:              # global temperature on the log-odds (calibration)
+        p = 1.0 / (1.0 + math.exp(-math.log(p / (1.0 - p)) / TEMP))
+    return p
 
 
 # ----------------------------------------------------------------------------
@@ -349,15 +389,19 @@ def run_backtest(games, plogs, test_seasons, crank):
         if res is None:
             skipped += 1; continue
         att, dfn, AVG, HOME, twsum = res
-        # league RA9 as of cutoff: total runs / total IP*? -> use 2*AVG (runs/game) ~ team RA;
-        # build uses pitcher-IP league RA9 ~4.3; approximate with AVG*? Use season run env: AVG
-        # is runs/team/game, league RA9 (runs/9ip) ~ AVG since a game ~9ip. Use AVG.
+        # League RA9 baseline for the pitcher FACTOR (= ra9_reg / lg_ra9). The starters actually
+        # being predicted average ~4.6 RA9, so the season run env AVG (~4.43) centers the factor
+        # distribution better than the model's selective top-IP LG_RA9 (~4.32); using ~4.30 was
+        # MEASURED to lower OOS, so we keep AVG (self-adapting per season cutoff).
         lg_ra9 = AVG
-        # games played by these two teams THIS season before the game (decaying-prior weight).
-        gp_home = sum(1 for x in prior if x["season"] == cur_season and (x["home"] == g["home"] or x["away"] == g["home"]))
-        gp_away = sum(1 for x in prior if x["season"] == cur_season and (x["home"] == g["away"] or x["away"] == g["away"]))
-        gp = (gp_home + gp_away) / 2.0
-        att2, dfn2 = apply_consensus(att, dfn, AVG, crank, gp)
+        if USE_CONSENSUS:
+            # games played by these two teams THIS season before the game (decaying-prior weight).
+            gp_home = sum(1 for x in prior if x["season"] == cur_season and (x["home"] == g["home"] or x["away"] == g["home"]))
+            gp_away = sum(1 for x in prior if x["season"] == cur_season and (x["home"] == g["away"] or x["away"] == g["away"]))
+            gp = (gp_home + gp_away) / 2.0
+            att2, dfn2 = apply_consensus(att, dfn, AVG, crank, gp)
+        else:
+            att2, dfn2 = att, dfn   # model-only (no future-informed consensus); honest OOS
         # pitcher factors strictly before the GAME date (more granular than weekly is fine,
         # it only uses that pitcher's own prior starts -> no leakage)
         f_home_sp = pitcher_factor(g["ph_id"], plogs, g["date"], cur_season, lg_ra9) if g["ph_id"] else None
@@ -412,6 +456,19 @@ def report(preds, test_seasons, skipped):
           f"  Brier score:  {brier:.4f}   (always-0.5 baseline {brier_50:.4f})",
           f"  Log-loss:     {ll:.4f}   (base-rate baseline {ll_base:.4f})",
           f"  Home-team actual win rate in window: {base_rate*100:.1f}%"]
+
+    # Fix 4: report RAW (pre-temperature) vs CALIBRATED probabilistic scores. winp already has
+    # TEMP applied in predict_winp, so recover the raw prob by inverting the temperature.
+    if TEMP != 1.0:
+        def _raw(p):
+            if not (0.0 < p < 1.0): return p
+            return 1.0 / (1.0 + math.exp(-math.log(p / (1.0 - p)) * TEMP))
+        braw = sum((_raw(p["winp"]) - p["home_won"]) ** 2 for p in preds) / N
+        lraw = -sum(p["home_won"] * math.log(max(_raw(p["winp"]), eps)) +
+                    (1 - p["home_won"]) * math.log(max(1 - _raw(p["winp"]), eps)) for p in preds) / N
+        L += [f"  [temperature T={TEMP:.2f}]  RAW (uncalibrated): Brier {braw:.4f}  Log-loss {lraw:.4f}",
+              f"                          CALIBRATED (above):  Brier {brier:.4f}  Log-loss {ll:.4f}",
+              f"  (straight-up hit-rate is identical raw vs calibrated -- temperature is monotonic)"]
 
     # calibration by confidence bucket (on the HOME win prob)
     buckets = [(0.0, 0.5), (0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 1.01)]

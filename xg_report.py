@@ -2,7 +2,8 @@
 """Show which teams have over/under-performed their xG so far this World Cup -- i.e.
 where actual goals were lucky/unlucky. The model now regresses these toward xG."""
 import csv
-PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"
+import os
+PROJ = os.path.dirname(os.path.abspath(__file__))
 XG_NAME = {"Cabo Verde":"Cape Verde","Congo DR":"DR Congo","Czechia":"Czech Republic",
            "Côte d'Ivoire":"Ivory Coast","IR Iran":"Iran","Türkiye":"Turkey","USA":"United States"}
 agg = {}

@@ -1,6 +1,7 @@
 import csv, collections, datetime
 
-PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"
+import os
+PROJ = os.path.dirname(os.path.abspath(__file__))
 rows = list(csv.DictReader(open(PROJ + r"\results.csv", encoding="utf-8")))
 print("total matches:", len(rows))
 print("date range:", rows[0]["date"], "->", rows[-1]["date"])

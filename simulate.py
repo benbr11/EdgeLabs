@@ -25,7 +25,8 @@ Examples:
 import csv, math, random, argparse, sys, collections, unicodedata
 import groups as G
 
-PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"
+import os
+PROJ = os.path.dirname(os.path.abspath(__file__))
 
 # ---- tunable modifier magnitudes (all documented; edit freely) --------------
 AVAIL_FLOOR   = 0.60   # avail=1.0 -> factor 1.0 ; avail=0.5 -> 0.80

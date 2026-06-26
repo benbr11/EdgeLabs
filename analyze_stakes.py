@@ -14,7 +14,8 @@ which we feed back into simulate.py instead of guessing.
 """
 import csv, math, datetime, itertools, collections
 
-PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"
+import os
+PROJ = os.path.dirname(os.path.abspath(__file__))
 
 WC_YEARS  = {1998,2002,2006,2010,2014,2018,2022}
 EURO_YEARS = {1996,2000,2004,2008,2012}

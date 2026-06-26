@@ -5,7 +5,8 @@ Usage:  python recent.py            (since 2026-06-01)
         python recent.py 2026-06-15 (custom cutoff)
 """
 import csv, sys
-PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"
+import os
+PROJ = os.path.dirname(os.path.abspath(__file__))
 cutoff = sys.argv[1] if len(sys.argv) > 1 else "2026-06-01"
 rows = [r for r in csv.DictReader(open(PROJ + r"\results.csv", encoding="utf-8"))
         if r["date"] >= cutoff]

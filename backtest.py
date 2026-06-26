@@ -11,7 +11,8 @@ backtest validates the core goals+Elo engine.)
 """
 import csv, math, datetime, itertools, collections
 
-PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"
+import os
+PROJ = os.path.dirname(os.path.abspath(__file__))
 TEST = ([("FIFA World Cup", y) for y in (2006,2010,2014,2018,2022)] +
         [("UEFA Euro",     y) for y in (2012,2016,2021,2024)])
 

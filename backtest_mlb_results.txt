@@ -1,0 +1,60 @@
+==============================================================================
+HONEST WALK-FORWARD (OUT-OF-SAMPLE) BACKTEST -- MLB MODEL
+Test window: [2024, 2025] regular season   |   N = 4857 games   |   skipped (insufficient prior data): 0
+Each game predicted from data STRICTLY BEFORE it (no look-ahead).
+==============================================================================
+
+HEADLINE -- straight-up WINNER hit-rate: 56.66%  (2752/4857)
+  mean model confidence on its pick: 56.9%
+  coin-flip = 50.0%   |   market benchmark ~58-60% (MLB is the flattest sport)
+
+PROBABILISTIC SCORES (lower is better):
+  Brier score:  0.2432   (always-0.5 baseline 0.2500)
+  Log-loss:     0.6793   (base-rate baseline 0.6911)
+  Home-team actual win rate in window: 53.2%
+  [temperature T=1.46]  RAW (uncalibrated): Brier 0.2449  Log-loss 0.6832
+                          CALIBRATED (above):  Brier 0.2432  Log-loss 0.6793
+  (straight-up hit-rate is identical raw vs calibrated -- temperature is monotonic)
+
+CALIBRATION -- by predicted HOME win probability:
+  bucket              N    pred home%  actual home%
+  0-50%            1919         43.8%         45.6%
+  50-60%           2130         54.7%         55.2%
+  60-70%            728         63.8%         65.1%
+  70-80%             76         73.0%         73.7%
+  80-101%             4         81.2%         75.0%
+
+TRUST-TIER TABLE -- accuracy of the model's PICK above each confidence threshold:
+  conf >=        N picks    hit-ratevs market 58-60%
+  50%               4857       56.7%   at
+  60%               1194       64.7%   above
+  65%                421       68.6%   above
+  70%                115       71.3%   above
+  75%                 27       77.8%   above
+  80%                  4       75.0%   above
+
+PER-TEAM pick accuracy (games involving the team; >=30 games):
+  BEST predicted:
+    Chicago White Sox           69.2%  (321 g)
+    Colorado Rockies            66.7%  (324 g)
+    Philadelphia Phillies       62.7%  (324 g)
+    Minnesota Twins             59.6%  (322 g)
+    Los Angeles Dodgers         59.6%  (324 g)
+    Texas Rangers               59.4%  (325 g)
+  WORST predicted:
+    New York Mets               54.0%  (324 g)
+    Toronto Blue Jays           53.9%  (323 g)
+    St. Louis Cardinals         53.8%  (325 g)
+    Seattle Mariners            51.9%  (324 g)
+    Boston Red Sox              51.8%  (326 g)
+    San Diego Padres            49.7%  (324 g)
+
+==============================================================================
+HONEST READ:
+  Winner hit-rate 56.7% beats a coin flip by +6.7 pts and sits just
+  below the ~58-60% market benchmark. Solid for MLB but not market-beating.
+  Brier 0.2432 beats the naive 0.5 baseline (0.2500): the probabilities
+  carry real information even where raw winner calls are close to the market.
+  Strong vs weak: see the calibration buckets (are high-confidence picks
+  actually winning more?) and the per-team table above.
+==============================================================================

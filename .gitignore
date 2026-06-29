@@ -17,3 +17,9 @@ dl_*.py
 scrape_*.py
 validate_ufc_*.py
 build_ufc_hometowns.py
+_nhl_api_cache/
+_*.json
+_*.csv
+_backtest_*
+*_cache.json
+*_cache/

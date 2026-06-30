@@ -1,0 +1,17 @@
+city,altitude_m,temp_c,open_air,note
+Mexico City,2200,23,1,extreme altitude (the only altitude venue in the knockouts)
+Zapopan,1670,28,1,Guadalajara - significant altitude (group/R32 only)
+Guadalupe,530,36,1,Monterrey - open-air extreme heat (group/R32 only)
+Kansas City,257,32,1,open-air hot + humid (QF venue)
+Miami Gardens,2,32,1,open-air hot + humid (QF + 3rd place)
+Santa Clara,5,28,1,open-air harsh sun
+Inglewood,38,25,1,roofed open sides; mild
+Seattle,5,20,1,partial roof; coolest US venue
+Atlanta,307,31,0,AC closed roof -> heat neutralized
+Arlington,173,36,0,AC closed roof -> heat neutralized
+Houston,15,34,0,AC closed roof -> heat neutralized
+East Rutherford,5,30,1,open-air (final venue)
+Foxborough,78,28,1,open-air
+Philadelphia,12,31,1,open-air
+Toronto,76,27,1,open-air partial roof
+Vancouver,5,22,0,retractable roof; mild

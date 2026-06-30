@@ -55,6 +55,33 @@ try:
 except FileNotFoundError:
     pass
 
+# venue conditions (altitude/heat) + each team's home baseline -> relative fitness penalty.
+# A team is only penalised at a venue HOTTER or HIGHER than what it's acclimatised to.
+CTX = {}
+try:
+    for r in csv.DictReader(open(os.path.join(BASE, "context.csv"), encoding="utf-8")):
+        CTX[r["team"]] = (float(r["home_alt_m"]), float(r["home_temp_c"]))
+except (FileNotFoundError, KeyError):
+    pass
+VENUES = {}
+try:
+    for r in csv.DictReader(open(os.path.join(BASE, "wc_venues.csv"), encoding="utf-8")):
+        VENUES[r["city"]] = (float(r["altitude_m"]), float(r["temp_c"]), r["open_air"].strip() == "1")
+except FileNotFoundError:
+    pass
+ALT_PEN_PER_KM = 0.05; ALT_BUFFER = 500; HEAT_PEN_PER_C = 0.005; HEAT_BUFFER = 8
+def venue_factor(team, city):
+    """Fitness multiplier (<=1.0) for a team at a venue, vs its home altitude/heat."""
+    if city not in VENUES or team not in CTX:
+        return 1.0
+    valt, vtemp, openair = VENUES[city]; halt, htemp = CTX[team]
+    f = 1.0
+    if valt > halt + ALT_BUFFER:
+        f *= max(0.0, 1 - ALT_PEN_PER_KM * (valt - halt - ALT_BUFFER) / 1000.0)
+    if openair and vtemp > htemp + HEAT_BUFFER:
+        f *= max(0.0, 1 - HEAT_PEN_PER_C * (vtemp - htemp - HEAT_BUFFER))
+    return f
+
 def nb_pmf(mu, r, mg):
     return [math.exp(math.lgamma(k+r)-math.lgamma(r)-math.lgamma(k+1)+r*math.log(r/(r+mu))+k*math.log(mu/(r+mu))) for k in range(mg+1)]
 def matrix(lamA, lamB, dA, dB):
@@ -67,8 +94,9 @@ def matrix(lamA, lamB, dA, dB):
     exA=sum(i*sum(M[i]) for i in rng); exB=sum(j*sum(M[i][j] for i in rng) for j in rng)
     return pA, pD, pB, exA, exB
 
-def predict_ko(A, B, neutral, home_is_A):
-    avA = AVAIL.get(A, 1.0); avB = AVAIL.get(B, 1.0)   # injury/availability: weaken attack, worsen defense
+def predict_ko(A, B, neutral, home_is_A, city=None):
+    # injury/availability AND venue (altitude/heat) both weaken a team: lower attack, worse defense
+    avA = AVAIL.get(A, 1.0) * venue_factor(A, city); avB = AVAIL.get(B, 1.0) * venue_factor(B, city)
     amA, dmA = R[A]["am"]*avA, R[A]["dm"]/avA
     amB, dmB = R[B]["am"]*avB, R[B]["dm"]/avB
     lamA = avg*(amA**COMPRESS)*(dmB**COMPRESS)/C2
@@ -95,11 +123,11 @@ for r in csv.DictReader(open(os.path.join(BASE, "wc2026_xg.csv"), encoding="utf-
         print(f"  (skip: {r.get('home_team_name')} vs {r.get('away_team_name')} on {r.get('date')} -- team not resolved)")
         continue
     neutral = hA not in HOSTS          # host plays at home; otherwise neutral knockout
-    games.append((r.get("date", ""), hA, aB, neutral))
+    games.append((r.get("date", ""), hA, aB, neutral, r.get("city", "")))
 
 rows = []
-for date, A, B, neutral in games:
-    pA, pD, pB, advA, advB, exA, exB = predict_ko(A, B, neutral, home_is_A=True)
+for date, A, B, neutral, city in games:
+    pA, pD, pB, advA, advB, exA, exB = predict_ko(A, B, neutral, home_is_A=True, city=city)
     fav, adv = (A, advA) if advA >= advB else (B, advB)
     total = exA + exB
     notes = []

@@ -25,8 +25,7 @@ Examples:
 import csv, math, random, argparse, sys, collections, unicodedata
 import groups as G
 
-import os
-PROJ = os.path.dirname(os.path.abspath(__file__))
+PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"
 
 # ---- tunable modifier magnitudes (all documented; edit freely) --------------
 AVAIL_FLOOR   = 0.60   # avail=1.0 -> factor 1.0 ; avail=0.5 -> 0.80
@@ -44,19 +43,14 @@ HEAT_BUFFER_C = 8
 WEATHER_GOALS = {"clear":1.0, "rain":0.90, "cold":0.95, "heat":0.93}
 RHO = -0.12  # Dixon-Coles low-score correction (tuned via backtest.py); <0 lifts draws & 0-0/1-1
 VAR_BASE, VAR_SLOPE = 6.0, 0.34  # variance-by-rating: NegBin dispersion grows with rating (weak teams = more volatile)
-# Probability calibration (temperature). The raw goals+Elo Dixon-Coles engine is
-# OVER-confident at the top end (backtest.py leave-one-tournament-out CV: the model
-# claims ~0.85 where reality is ~0.62 in the 0.8-0.9 bucket). A temperature T>1
-# softens the W/D/L (and knockout advance) probabilities -- p_i -> p_i**(1/T),
-# renormalised -- which improves out-of-sample log-loss/Brier without changing the
-# pick (monotonic). T=1.3 = median of the LOTO per-fold fits (range 1.20-1.40);
-# OOS pooled log-loss 0.9835 -> 0.9779. Tune via backtest.py's calibration block.
-CALIB_T = 1.30
-def calibrate(probs, T=CALIB_T):
-    """Temperature-scale a probability vector (fractions summing to 1)."""
-    if T == 1.0: return list(probs)
-    q = [max(p, 1e-12) ** (1.0 / T) for p in probs]; s = sum(q)
-    return [x / s for x in q]
+# MISMATCH COMPRESSION (tuned via totals_fix.py walk-forward). A multiplicative
+# attack x defense model inflates expected goals in lopsided games (a strong team's
+# lambda balloons to 3-4 when reality is a 2-0 coast), which over-predicts totals AND
+# makes win probabilities overconfident. Raising each multiplier to COMPRESS<1 shrinks
+# that spread; C2_RELEVEL (computed at runtime over the field) keeps the average goal
+# level unchanged. Backtest: W/D/L log-loss 0.869->0.829 with picks unchanged, and
+# totals calibration sharply improved. COMPRESS=1.0 recovers the old behaviour exactly.
+COMPRESS = 0.60
 
 ALIASES = {
     "usa":"United States","us":"United States","america":"United States",
@@ -152,6 +146,16 @@ def main():
     if a.seed is not None: random.seed(a.seed)
 
     R = load_csv("ratings.csv"); ctx = load_csv("context.csv")
+    # re-level constant so COMPRESS leaves the average matchup goal level unchanged:
+    # C2_RELEVEL = mean over all team pairings of (attack_mult^P * defense_mult^P).
+    # At COMPRESS=1 this equals the build's mean(att*dfn)=1, so lambdas are unchanged.
+    _C2s = 0.0; _C2n = 0
+    for _ta in R:
+        _apa = float(R[_ta]["attack_mult"]) ** COMPRESS
+        for _tb in R:
+            if _ta == _tb: continue
+            _C2s += _apa * (float(R[_tb]["defense_mult"]) ** COMPRESS); _C2n += 1
+    C2_RELEVEL = _C2s / _C2n if _C2n else 1.0
     A = resolve(a.team_a, R); B = resolve(a.team_b, R)
     host = resolve(a.home, R) if a.home else None
     stakesA, stakesB = a.stakes_a, a.stakes_b
@@ -187,10 +191,10 @@ def main():
 
     hfA = hadv if host == A else 1.0
     hfB = hadv if host == B else 1.0
-    base_aA = float(R[A]["attack_mult"]); base_dA = float(R[A]["defense_mult"])
-    base_aB = float(R[B]["attack_mult"]); base_dB = float(R[B]["defense_mult"])
-    lamA = avg * (base_aA*amA) * (base_dB/dmB) * hfA * wfac
-    lamB = avg * (base_aB*amB) * (base_dA/dmA) * hfB * wfac
+    base_aA = float(R[A]["attack_mult"])**COMPRESS; base_dA = float(R[A]["defense_mult"])**COMPRESS
+    base_aB = float(R[B]["attack_mult"])**COMPRESS; base_dB = float(R[B]["defense_mult"])**COMPRESS
+    lamA = avg * (base_aA*amA) * (base_dB/dmB) * hfA * wfac / C2_RELEVEL
+    lamB = avg * (base_aB*amB) * (base_dA/dmA) * hfB * wfac / C2_RELEVEL
 
     dA = VAR_BASE + VAR_SLOPE*((float(R[A]["attack_100"])+float(R[A]["defense_100"]))/2)
     dB = VAR_BASE + VAR_SLOPE*((float(R[B]["attack_100"])+float(R[B]["defense_100"]))/2)
@@ -199,9 +203,6 @@ def main():
     pA = 100*sum(M[i][j] for i in rng for j in rng if i > j)
     pB = 100*sum(M[i][j] for i in rng for j in rng if j > i)
     pD = 100*sum(M[i][i] for i in rng)
-    # temperature-calibrate the W/D/L probabilities (cures over-confidence; see CALIB_T).
-    # exA/exB are score expectations from the raw matrix and are left uncalibrated.
-    pA, pD, pB = (100*x for x in calibrate((pA/100.0, pD/100.0, pB/100.0)))
     exA = sum(i*sum(M[i]) for i in rng)
     exB = sum(j*sum(M[i][j] for i in rng) for j in rng)
     flat = sorted(((M[i][j], (i,j)) for i in rng for j in rng), reverse=True)

@@ -1,6 +1,13 @@
 "use strict";
 const D = window.WC_DATA, P = D.params, M = D.mods, T = D.teams;
 const TEAMS = Object.keys(T).sort();
+// MISMATCH COMPRESSION (tuned via totals_fix.py walk-forward; mirrors simulate.py).
+// Shrinks the attack x defense spread so expected goals aren't over-predicted and win
+// probabilities aren't overconfident in lopsided games. C2_RELEVEL keeps the average
+// matchup goal level unchanged. COMPRESS=1 recovers the old behaviour exactly.
+const COMPRESS = 0.60;
+const C2_RELEVEL = (()=>{ let s=0,n=0; for(const a of TEAMS){ const ap=Math.pow(T[a].att_mult,COMPRESS);
+  for(const b of TEAMS){ if(a===b) continue; s+=ap*Math.pow(T[b].dfn_mult,COMPRESS); n++; } } return n?s/n:1; })();
 const FLAG_CODE={Canada:"ca",Mexico:"mx","United States":"us",Australia:"au",Iran:"ir",Iraq:"iq",Japan:"jp",Jordan:"jo",Qatar:"qa","Saudi Arabia":"sa","South Korea":"kr",Uzbekistan:"uz",Algeria:"dz","Cape Verde":"cv","DR Congo":"cd",Egypt:"eg",Ghana:"gh","Ivory Coast":"ci",Morocco:"ma",Senegal:"sn","South Africa":"za",Tunisia:"tn","Curaçao":"cw",Haiti:"ht",Panama:"pa",Argentina:"ar",Brazil:"br",Colombia:"co",Ecuador:"ec",Paraguay:"py",Uruguay:"uy","New Zealand":"nz",Austria:"at",Belgium:"be","Bosnia and Herzegovina":"ba",Croatia:"hr","Czech Republic":"cz",England:"gb-eng",France:"fr",Germany:"de",Netherlands:"nl",Norway:"no",Portugal:"pt",Scotland:"gb-sct",Spain:"es",Sweden:"se",Switzerland:"ch",Turkey:"tr"};
 function flag(t){ const c=FLAG_CODE[t]; return c?`<img class="flag" src="https://flagcdn.com/w40/${c}.png" alt="" loading="lazy" onerror="this.style.display='none'">`:""; }
 const TEAM_COLOR={Canada:"#D52B1E",Mexico:"#006847","United States":"#2A3C7D",Australia:"#00843D",Iran:"#239F40",Iraq:"#1A8A4A",Japan:"#BC002D",Jordan:"#007A3D",Qatar:"#8A1538","Saudi Arabia":"#1B7A3D","South Korea":"#003478",Uzbekistan:"#1EB53A",Algeria:"#1B7A3D","Cape Verde":"#0A3A8B","DR Congo":"#1077E8",Egypt:"#CE1126",Ghana:"#007B3F","Ivory Coast":"#FF7900",Morocco:"#006233",Senegal:"#00853F","South Africa":"#007749",Tunisia:"#E70013","Curaçao":"#00248F",Haiti:"#00269A",Panama:"#0049A5",Argentina:"#6CA6DC",Brazil:"#1FAA52",Colombia:"#E0B100",Ecuador:"#E8A200",Paraguay:"#C8102E",Uruguay:"#0038A8","New Zealand":"#3A3A3A",Austria:"#ED2939",Belgium:"#C9A227","Bosnia and Herzegovina":"#1B3A8B",Croatia:"#D81E2C","Czech Republic":"#11457E",England:"#CF142B",France:"#21407F",Germany:"#3A3A3A",Netherlands:"#F36C21",Norway:"#BA0C2F",Portugal:"#0A6634",Scotland:"#005EB8",Spain:"#C60B1E",Sweden:"#D9A400",Switzerland:"#D52B1E",Turkey:"#E30A17"};
@@ -54,8 +61,8 @@ function lambdas(A,B,o){
   const mB=mods(B, o.availB??1, o.restB??4, o.stakesB||"normal", vTemp, vAlt);
   const w=M.weather[o.weather||"clear"];
   const hfA=host===A?P.home_adv:1, hfB=host===B?P.home_adv:1;
-  return [P.avg*(T[A].att_mult*mA.am)*(T[B].dfn_mult/mB.dm)*hfA*w,
-          P.avg*(T[B].att_mult*mB.am)*(T[A].dfn_mult/mA.dm)*hfB*w];
+  return [P.avg*(Math.pow(T[A].att_mult,COMPRESS)*mA.am)*(Math.pow(T[B].dfn_mult,COMPRESS)/mB.dm)*hfA*w/C2_RELEVEL,
+          P.avg*(Math.pow(T[B].att_mult,COMPRESS)*mB.am)*(Math.pow(T[A].dfn_mult,COMPRESS)/mA.dm)*hfB*w/C2_RELEVEL];
 }
 function predict(A,B,o){
   o=o||{};
@@ -324,7 +331,7 @@ function titleOddsScreen(){
 
 /* --------------------------------- PLAYER ODDS ----------------------------- */
 function playerOdds(team, teamLambda){
-  const base = P.avg * T[team].att_mult * (P.avgdfn||1); // team's exp. goals vs an AVERAGE defence (incl. mean dfn mult)
+  const base = P.avg * Math.pow(T[team].att_mult,COMPRESS) * Math.pow(P.avgdfn||1,COMPRESS) / C2_RELEVEL; // team's exp. goals vs an AVERAGE defence (compression-consistent with lambdas())
   const scale = base > 0 ? teamLambda/base : 1;        // scale to this matchup (opponent defence); ~1 for an average opponent
   const af = {FWD:0.55, MID:1.0, DEF:0.7};             // assist-to-goal ratio by role (estimate)
   const CAL_FLOOR = 0.045, CAL_GAMMA = 0.55;           // backtest calibration (backtest_players.py): baseline hazard + discount; beats baseline log-loss

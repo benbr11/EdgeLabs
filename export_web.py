@@ -25,6 +25,27 @@ for r in csv.DictReader(open(PROJ + r"\ratings.csv", encoding="utf-8")):
                     "elo": round(float(r["elo"])), "fifa": round(float(r["fifa_points"]))}
     avg = float(r["league_avg_goals"]); home_adv = float(r["home_adv_mult"])
 
+# --- injury / availability overlay (the one MANUAL layer; refresh during the tournament) ---
+# Incorporate in-tournament key-player absences as a small strength multiplier so every
+# prediction the app makes is injury-aware: a weakened team gets lower attack and worse
+# (higher) defense multiplier. Graceful no-op if the file is absent. Remove entries when a
+# player returns so stale injuries don't persist in the forever-updating pipeline.
+_avail = {}
+try:
+    for ar in csv.DictReader(open(PROJ + r"\wc_availability.csv", encoding="utf-8")):
+        _avail[ar["team"]] = float(ar["avail"])
+except FileNotFoundError:
+    pass
+_napplied = 0
+for t, av in _avail.items():
+    if t in R and 0 < av <= 1.0:
+        R[t]["att_mult"] *= av
+        R[t]["dfn_mult"] /= av
+        R[t]["avail"] = round(av, 3)
+        _napplied += 1
+if _napplied:
+    print(f"Applied injury/availability overlay to {_napplied} teams")
+
 for r in csv.DictReader(open(PROJ + r"\context.csv", encoding="utf-8")):
     if r["team"] in R:
         R[r["team"]].update({"home_temp": float(r["home_temp_c"]), "home_alt": float(r["home_alt_m"]),

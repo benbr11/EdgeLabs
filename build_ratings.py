@@ -115,6 +115,14 @@ with open(PROJ + r"\results.csv", encoding="utf-8") as f:
         rows.append((d, r["home_team"], r["away_team"], hs, as_,
                      r["neutral"].strip().upper() == "TRUE"))
 rows.sort(key=lambda x: x[0])
+# optional date cutoff (WC_BUILD_CUTOFF=YYYY-MM-DD): build PRE-TOURNAMENT ratings using
+# only matches strictly before the cutoff, for clean live-tournament validation.
+_cut = os.environ.get("WC_BUILD_CUTOFF")
+if _cut:
+    _cutd = datetime.date.fromisoformat(_cut)
+    _before = len(rows)
+    rows = [r for r in rows if r[0] < _cutd]
+    print(f"[cutoff] {_cut}: using {len(rows)}/{_before} matches strictly before cutoff")
 MAXDATE = rows[-1][0]
 print(f"Loaded {len(rows):,} matches through {MAXDATE}")
 
@@ -145,8 +153,11 @@ for d, h, a, hs, as_, neutral in rows:
 # SOURCE A: iterative goals-based attack/defense (opponent- & recency-adjusted)
 # =============================================================================
 CUTOFF = datetime.date(2015, 1, 1)
-HALFLIFE_DAYS = 730.0           # 2-year half-life recency weighting (tuned via backtest.py)
-WC_BOOST = 1.5                  # current World Cup games weighted extra (most current) but not so much an outlier distorts
+HALFLIFE_DAYS = float(os.environ.get("WC_HALFLIFE_DAYS", "600.0"))   # recency half-life: lowered 730->600 so recent games matter slightly more (env-tunable)
+# current World Cup games weighted extra (most current). Kept modest: a 1.5x boost on
+# top of the 2-year recency half-life double-counts recency and lets a 2-3 game WC
+# sample (e.g. Morocco's clean sheets) distort a rating. Tunable via WC_BOOST env var.
+WC_BOOST = float(os.environ.get("WC_BOOST", "1.5"))
 def weight(d):
     age = (MAXDATE - d).days
     return 0.5 ** (age / HALFLIFE_DAYS)
@@ -204,14 +215,12 @@ for iteration in range(60):
 
 # Home advantage. It cannot be cleanly separated from attack/defense in this
 # dataset (every match's home side is a different team, so a fit just absorbs the
-# effect into the ratings). Applied ONLY to a designated host team in simulate.py.
-# Tuned via backtest.py's HOME-ADVANTAGE experiment: across 52 historical host
-# group matches, host-only log-loss is minimised at a host goal-rate multiplier of
-# ~1.10-1.20 (0.847) and every leave-one-tournament-out fold votes below 1.30, so we
-# use 1.15 -- lower than the textbook ~1.30 (which the data shows is too strong for
-# major-tournament hosts). The raw observed home/away goal ratio is printed for
-# reference (it is inflated by scheduling -- strong teams host weak ones in qualifiers).
-HOME_ADV = 1.15
+# effect into the ratings). We therefore use the well-established football-modeling
+# value: a host scores ~30% more goals (~+0.4 on a ~1.4 base). Applied ONLY to a
+# designated host team in simulate.py; tune via this constant. The raw observed
+# home/away goal ratio is printed for reference (it is inflated by scheduling --
+# strong teams host weak ones in qualifiers -- so we do not use it directly).
+HOME_ADV = 1.30
 hg = ag = 0.0
 for d, h, a, hs, as_, neutral, eh, ea, wb in recent:
     if neutral: continue
@@ -283,8 +292,23 @@ if SB_XG:
 else:
     zx = zscores(g_str)
 
-# weights: shot-xG (chance quality), goals/current form, squad value (talent), Elo, FIFA
-W_SBXG, W_GOALS, W_VALUE, W_ELO, W_FIFA = 0.20, 0.22, 0.26, 0.16, 0.16   # current form (goals incl. WC) now > historical xG
+# weights: shot-xG (chance quality), goals/current form, squad value (talent), Elo, FIFA.
+# Elo is the only CROSS-CONFEDERATION-calibrated signal (it ties the African/Asian/
+# European pools together through every inter-confederation result), so it carries the
+# most weight here -- the walk-forward backtest shows a goals+Elo core ranks
+# cross-confederation matchups (e.g. Netherlands > Morocco) correctly and is the
+# best-calibrated. FIFA points are de-emphasised: they carry a known CAF-friendly quirk
+# (Morocco's FIFA points actually edge Netherlands', which is not real). Squad value
+# stays heavy -- it is the forward-looking talent signal and points the right way.
+# All tunable via env vars for backtesting.
+W_SBXG  = float(os.environ.get("W_SBXG",  "0.14"))
+W_GOALS = float(os.environ.get("W_GOALS", "0.24"))
+W_VALUE = float(os.environ.get("W_VALUE", "0.26"))
+W_ELO   = float(os.environ.get("W_ELO",   "0.28"))
+W_FIFA  = float(os.environ.get("W_FIFA",  "0.08"))
+_wtot = W_SBXG + W_GOALS + W_VALUE + W_ELO + W_FIFA
+W_SBXG, W_GOALS, W_VALUE, W_ELO, W_FIFA = (w/_wtot for w in (W_SBXG, W_GOALS, W_VALUE, W_ELO, W_FIFA))
+print(f"Consensus weights: SBxG {W_SBXG:.2f} GOALS {W_GOALS:.2f} VALUE {W_VALUE:.2f} ELO {W_ELO:.2f} FIFA {W_FIFA:.2f}")
 cons_z = {t: W_SBXG*zx[t] + W_GOALS*zg[t] + W_VALUE*zv[t] + W_ELO*ze[t] + W_FIFA*zf[t] for t in TEAMS}
 
 # put consensus strength back on the goals log-scale, then split by tilt
@@ -320,7 +344,7 @@ defense100 = {t: to100(zD[t]) for t in TEAMS}
 # Write ratings.csv  (+ store global params on every row for the simulator)
 # =============================================================================
 out = sorted(TEAMS, key=lambda t: -(attack100[t]+defense100[t]))
-with open(PROJ + r"\ratings.csv", "w", newline="", encoding="utf-8") as f:
+with open(os.path.join(PROJ, os.environ.get("WC_RATINGS_OUT", "ratings.csv")), "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f)
     w.writerow(["team","attack_100","defense_100","attack_mult","defense_mult",
                 "elo","fifa_points","fifa_estimated","matches_since_2015",

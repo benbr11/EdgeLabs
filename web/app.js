@@ -8,6 +8,12 @@ const TEAMS = Object.keys(T).sort();
 const COMPRESS = 0.60;
 const C2_RELEVEL = (()=>{ let s=0,n=0; for(const a of TEAMS){ const ap=Math.pow(T[a].att_mult,COMPRESS);
   for(const b of TEAMS){ if(a===b) continue; s+=ap*Math.pow(T[b].dfn_mult,COMPRESS); n++; } } return n?s/n:1; })();
+// GOAL-LEVEL SCALE (fit OOS in wc_totals_calibrate.py; mirrors simulate.py). Competitive
+// fixtures score below the all-games average the ratings are leveled on, so the raw model
+// over-predicts goal TOTALS. GOAL_SCALE is applied ONLY to the totals outputs (expected
+// goals, scorelines, BTTS, clean sheets); W/D/L and advance% stay on the unscaled lambdas,
+// which validate better for match RESULT. GOAL_SCALE=1 recovers the old totals behaviour.
+const GOAL_SCALE = 0.80;
 const FLAG_CODE={Canada:"ca",Mexico:"mx","United States":"us",Australia:"au",Iran:"ir",Iraq:"iq",Japan:"jp",Jordan:"jo",Qatar:"qa","Saudi Arabia":"sa","South Korea":"kr",Uzbekistan:"uz",Algeria:"dz","Cape Verde":"cv","DR Congo":"cd",Egypt:"eg",Ghana:"gh","Ivory Coast":"ci",Morocco:"ma",Senegal:"sn","South Africa":"za",Tunisia:"tn","Curaçao":"cw",Haiti:"ht",Panama:"pa",Argentina:"ar",Brazil:"br",Colombia:"co",Ecuador:"ec",Paraguay:"py",Uruguay:"uy","New Zealand":"nz",Austria:"at",Belgium:"be","Bosnia and Herzegovina":"ba",Croatia:"hr","Czech Republic":"cz",England:"gb-eng",France:"fr",Germany:"de",Netherlands:"nl",Norway:"no",Portugal:"pt",Scotland:"gb-sct",Spain:"es",Sweden:"se",Switzerland:"ch",Turkey:"tr"};
 function flag(t){ const c=FLAG_CODE[t]; return c?`<img class="flag" src="https://flagcdn.com/w40/${c}.png" alt="" loading="lazy" onerror="this.style.display='none'">`:""; }
 const TEAM_COLOR={Canada:"#D52B1E",Mexico:"#006847","United States":"#2A3C7D",Australia:"#00843D",Iran:"#239F40",Iraq:"#1A8A4A",Japan:"#BC002D",Jordan:"#007A3D",Qatar:"#8A1538","Saudi Arabia":"#1B7A3D","South Korea":"#003478",Uzbekistan:"#1EB53A",Algeria:"#1B7A3D","Cape Verde":"#0A3A8B","DR Congo":"#1077E8",Egypt:"#CE1126",Ghana:"#007B3F","Ivory Coast":"#FF7900",Morocco:"#006233",Senegal:"#00853F","South Africa":"#007749",Tunisia:"#E70013","Curaçao":"#00248F",Haiti:"#00269A",Panama:"#0049A5",Argentina:"#6CA6DC",Brazil:"#1FAA52",Colombia:"#E0B100",Ecuador:"#E8A200",Paraguay:"#C8102E",Uruguay:"#0038A8","New Zealand":"#3A3A3A",Austria:"#ED2939",Belgium:"#C9A227","Bosnia and Herzegovina":"#1B3A8B",Croatia:"#D81E2C","Czech Republic":"#11457E",England:"#CF142B",France:"#21407F",Germany:"#3A3A3A",Netherlands:"#F36C21",Norway:"#BA0C2F",Portugal:"#0A6634",Scotland:"#005EB8",Spain:"#C60B1E",Sweden:"#D9A400",Switzerland:"#D52B1E",Turkey:"#E30A17"};
@@ -68,14 +74,22 @@ function predict(A,B,o){
   o=o||{};
   const [lamA,lamB]=lambdas(A,B,o);
   const dA=VAR_BASE+VAR_SLOPE*((T[A].att100+T[A].def100)/2), dB=VAR_BASE+VAR_SLOPE*((T[B].att100+T[B].def100)/2);
-  const {Mx,mg}=dcMatrix(lamA,lamB,dA,dB), rng=[...Array(mg+1).keys()];
-  let pA=0,pD=0,pB=0,exA=0,exB=0,pH0=0,pA0=0; const flat=[];
+  // RESULT market (W/D/L, advance): unscaled lambdas -- validated best. exAraw/exBraw
+  // are the unscaled expected goals, kept for the player-odds model (its own backtested
+  // calibration was fit on these; do not feed it the totals-scaled goals).
+  const {Mx,mg}=dcMatrix(lamA,lamB,dA,dB);
+  let pA=0,pD=0,pB=0,exAraw=0,exBraw=0;
   for(let i=0;i<=mg;i++)for(let j=0;j<=mg;j++){ const p=Mx[i][j];
-    if(i>j)pA+=p; else if(j>i)pB+=p; else pD+=p; exA+=i*p; exB+=j*p;
+    if(i>j)pA+=p; else if(j>i)pB+=p; else pD+=p; exAraw+=i*p; exBraw+=j*p; }
+  // TOTALS market (expected goals, scorelines, BTTS, clean sheets): goal-level-calibrated.
+  const {Mx:Mt,mg:mgt}=dcMatrix(lamA*GOAL_SCALE,lamB*GOAL_SCALE,dA,dB);
+  let exA=0,exB=0,pH0=0,pA0=0; const flat=[];
+  for(let i=0;i<=mgt;i++)for(let j=0;j<=mgt;j++){ const p=Mt[i][j];
+    exA+=i*p; exB+=j*p;
     if(i===0)pH0+=p; if(j===0)pA0+=p; flat.push([p,i,j]); }
   flat.sort((x,y)=>y[0]-x[0]);
-  const btts=Math.max(0,1-pH0-pA0+Mx[0][0]);
-  const r={A,B,lamA,lamB,pA:pA*100,pD:pD*100,pB:pB*100,exA,exB,
+  const btts=Math.max(0,1-pH0-pA0+Mt[0][0]);
+  const r={A,B,lamA,lamB,pA:pA*100,pD:pD*100,pB:pB*100,exA,exB,exAraw,exBraw,
            btts:btts*100, csA:pA0*100, csB:pH0*100,
            top:flat.slice(0,3).map(([p,i,j])=>({i,j,p:p*100}))};
   if(o.knockout){
@@ -361,7 +375,7 @@ function playersScreen(){
     const r=predict(A,B,o);
     sec.appendChild(el(`<div class="card"><h4 style="margin:0 0 8px">${flag(A)} ${A} <span class="pill">v</span> ${flag(B)} ${B} <span class="mini">· ${f.date}</span></h4>
       <div class="prow phead"><span class="pn">Player</span><span class="pg">Goal</span><span class="pg">Assist</span><span class="pg ga">G+A</span></div>
-      ${rows(A,r.exA)}${rows(B,r.exB)}</div>`));
+      ${rows(A,r.exAraw)}${rows(B,r.exBraw)}</div>`));
   });
 }
 

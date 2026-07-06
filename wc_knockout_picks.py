@@ -18,6 +18,7 @@ try: sys.stdout.reconfigure(encoding="utf-8")
 except Exception: pass
 BASE = os.path.dirname(os.path.abspath(__file__))
 COMPRESS = 0.60; RHO = -0.12; VAR_BASE, VAR_SLOPE = 6.0, 0.34
+GOAL_SCALE = 0.80   # totals-only goal-level calibration (see simulate.py / wc_totals_calibrate.py)
 HOSTS = {"United States", "Canada", "Mexico"}
 XG_NAME = {"Cabo Verde": "Cape Verde", "Congo DR": "DR Congo", "Czechia": "Czech Republic",
            "Côte d'Ivoire": "Ivory Coast", "IR Iran": "Iran", "Türkiye": "Turkey", "USA": "United States"}
@@ -105,7 +106,9 @@ def predict_ko(A, B, neutral, home_is_A, city=None):
         if home_is_A: lamA *= HADV
         else: lamB *= HADV
     dA = VAR_BASE+VAR_SLOPE*((R[A]["a"]+R[A]["d"])/2); dB = VAR_BASE+VAR_SLOPE*((R[B]["a"]+R[B]["d"])/2)
-    pA, pD, pB, exA, exB = matrix(lamA, lamB, dA, dB)
+    # W/D/L + advance: unscaled (validated). Expected goals: totals-calibrated lambdas.
+    pA, pD, pB, _, _ = matrix(lamA, lamB, dA, dB)
+    _, _, _, exA, exB = matrix(lamA*GOAL_SCALE, lamB*GOAL_SCALE, dA, dB)
     # extra time = 1/3 of 90', then penalties ~ coin flip (tiny favorite edge)
     petA, petD, petB, _, _ = matrix(lamA/3.0, lamB/3.0, dA, dB)
     share = pA/(pA+pB) if (pA+pB) > 0 else 0.5
@@ -123,10 +126,10 @@ for r in csv.DictReader(open(os.path.join(BASE, "wc2026_xg.csv"), encoding="utf-
         print(f"  (skip: {r.get('home_team_name')} vs {r.get('away_team_name')} on {r.get('date')} -- team not resolved)")
         continue
     neutral = hA not in HOSTS          # host plays at home; otherwise neutral knockout
-    games.append((r.get("date", ""), hA, aB, neutral, r.get("city", "")))
+    games.append((r.get("date", ""), hA, aB, neutral, r.get("city", ""), r.get("stage_name", "").strip()))
 
 rows = []
-for date, A, B, neutral, city in games:
+for date, A, B, neutral, city, stage in games:
     pA, pD, pB, advA, advB, exA, exB = predict_ko(A, B, neutral, home_is_A=True, city=city)
     fav, adv = (A, advA) if advA >= advB else (B, advB)
     total = exA + exB
@@ -135,7 +138,7 @@ for date, A, B, neutral, city in games:
     if total < 2.2: notes.append("low-scoring (one goal decides it)")
     if pD > 0.30 and adv < 0.72: notes.append("likely ET/penalties")
     tier = "LOCK" if adv >= 0.70 else ("LEAN" if adv >= 0.60 else "STAY AWAY")
-    rows.append({"date": date, "A": A, "B": B, "fav": fav, "adv": adv, "neutral": neutral,
+    rows.append({"date": date, "A": A, "B": B, "fav": fav, "adv": adv, "neutral": neutral, "stage": stage,
                  "pA": pA, "pD": pD, "pB": pB, "total": total, "tier": tier, "notes": notes})
 
 def show(title, sel):
@@ -143,14 +146,20 @@ def show(title, sel):
     if not sel: print("  (none)"); return
     for r in sel:
         host = "" if r["neutral"] else "  (host adv)"
+        stg = f"  [{r['stage']}]" if r["stage"] else ""
         nt = ("   <- " + ", ".join(r["notes"])) if r["notes"] else ""
-        print(f"  {r['date']}  {r['A']} vs {r['B']}{host}")
+        print(f"  {r['date']}  {r['A']} vs {r['B']}{stg}{host}")
         print(f"      pick: {r['fav']} to advance {r['adv']*100:4.0f}%   |   90': "
               f"{r['A']} {r['pA']*100:.0f}% / draw {r['pD']*100:.0f}% / {r['B']} {r['pB']*100:.0f}%   "
               f"|   exp goals {r['total']:.1f}{nt}")
 
 rows.sort(key=lambda r: -r["adv"])
-print(f"\nWC 2026 ROUND OF 32 — BETTING BOARD ({len(rows)} games)   ratings through current data")
+# banner reflects whichever knockout stage(s) actually remain, in bracket order
+_ORDER = ["Round of 32", "Round of 16", "Quarter-finals", "Semi-finals", "Third-place play-off", "Final"]
+_present = [s for s in _ORDER if any(r["stage"] == s for r in rows)]
+_present += sorted({r["stage"] for r in rows if r["stage"] and r["stage"] not in _ORDER})
+_label = " + ".join(_present).upper() if _present else "KNOCKOUT"
+print(f"\nWC 2026 {_label} — BETTING BOARD ({len(rows)} games)   ratings through current data")
 show("✅ LOCKS — most obvious, safest picks (favorite advances >= 70%)", [r for r in rows if r["tier"] == "LOCK"])
 show("🟡 LEANS — solid but not safe (60-70%)", [r for r in rows if r["tier"] == "LEAN"])
 show("⛔ STAY AWAY — upset-prone / coin-flips (don't bet the result)", [r for r in rows if r["tier"] == "STAY AWAY"])

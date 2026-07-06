@@ -51,6 +51,15 @@ VAR_BASE, VAR_SLOPE = 6.0, 0.34  # variance-by-rating: NegBin dispersion grows w
 # level unchanged. Backtest: W/D/L log-loss 0.869->0.829 with picks unchanged, and
 # totals calibration sharply improved. COMPRESS=1.0 recovers the old behaviour exactly.
 COMPRESS = 0.60
+# GOAL-LEVEL SCALE (fit out-of-sample in wc_totals_calibrate.py). `league_avg_goals`
+# is leveled on ALL recent internationals, but competitive fixtures score below that,
+# so the raw model over-predicts goal TOTALS (~63% Over-2.5 vs ~50% actual). Scaling
+# both lambdas by GOAL_SCALE for the TOTALS outputs (expected goals + scorelines) fixes
+# this: held-out Over-2.5 Brier skill +1.4%->+5.3%, mean pred 63%->50%. It is applied
+# ONLY to totals -- W/D/L and advance% stay on the unscaled lambdas, which validate
+# better for match RESULT (the margin- and total-optimal goal levels genuinely differ,
+# so the two markets are decoupled). GOAL_SCALE=1.0 recovers the old totals behaviour.
+GOAL_SCALE = 0.80
 
 ALIASES = {
     "usa":"United States","us":"United States","america":"United States",
@@ -198,14 +207,18 @@ def main():
 
     dA = VAR_BASE + VAR_SLOPE*((float(R[A]["attack_100"])+float(R[A]["defense_100"]))/2)
     dB = VAR_BASE + VAR_SLOPE*((float(R[B]["attack_100"])+float(R[B]["defense_100"]))/2)
+    # RESULT market (W/D/L, advance, edge-vs-odds): unscaled lambdas -- validated best.
     M, maxg = dc_matrix(lamA, lamB, dA, dB)
     rng = range(maxg+1)
     pA = 100*sum(M[i][j] for i in rng for j in rng if i > j)
     pB = 100*sum(M[i][j] for i in rng for j in rng if j > i)
     pD = 100*sum(M[i][i] for i in rng)
-    exA = sum(i*sum(M[i]) for i in rng)
-    exB = sum(j*sum(M[i][j] for i in rng) for j in rng)
-    flat = sorted(((M[i][j], (i,j)) for i in rng for j in rng), reverse=True)
+    # TOTALS market (expected goals + scorelines): goal-level-calibrated lambdas.
+    Mt, maxgt = dc_matrix(lamA*GOAL_SCALE, lamB*GOAL_SCALE, dA, dB)
+    rngt = range(maxgt+1)
+    exA = sum(i*sum(Mt[i]) for i in rngt)
+    exB = sum(j*sum(Mt[i][j] for i in rngt) for j in rngt)
+    flat = sorted(((Mt[i][j], (i,j)) for i in rngt for j in rngt), reverse=True)
     top = [((i,j), p) for p,(i,j) in flat[:3]]; likely = top[0][0]
 
     if knockout:

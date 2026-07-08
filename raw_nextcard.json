@@ -1,21 +1,99 @@
 {
-  "event": "UFC Fight Night: Fiziev vs. Torres",
-  "date": "2026-06-27",
-  "venue": "National Gymnastics Arena",
-  "location": "Baku, Azerbaijan",
+  "event": "UFC 329: McGregor vs. Holloway 2",
+  "date": "2026-07-11",
+  "venue": "T-Mobile Arena",
+  "location": "Las Vegas, NV",
   "bouts": [
-    {"fighterA": "Rafael Fiziev", "fighterB": "Manuel Torres", "weightClass": "Lightweight", "rounds": 5, "isTitle": false},
-    {"fighterA": "Shara Magomedov", "fighterB": "Michel Pereira", "weightClass": "Middleweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Nazim Sadykhov", "fighterB": "Matheus Camilo", "weightClass": "Lightweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Asu Almabayev", "fighterB": "Charles Johnson", "weightClass": "Flyweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Ikram Aliskerov", "fighterB": "Brunno Ferreira", "weightClass": "Middleweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Abus Magomedov", "fighterB": "Michal Oleksiejczuk", "weightClass": "Middleweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Farman Hasanov", "fighterB": "Eric Nolan", "weightClass": "Welterweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Abdul-Rakhman Yakhyaev", "fighterB": "Julius Walker", "weightClass": "Light Heavyweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Nursulton Ruziboev", "fighterB": "Andrey Pulyaev", "weightClass": "Welterweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Kaan Ofli", "fighterB": "Javier Reyes", "weightClass": "Featherweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Daniil Donchenko", "fighterB": "Theodor Berggren", "weightClass": "Welterweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Bekzat Almakhan", "fighterB": "Jean Matsumoto", "weightClass": "Bantamweight", "rounds": 3, "isTitle": false},
-    {"fighterA": "Tahir Abdullayev", "fighterB": "Jefferson Nascimento", "weightClass": "Lightweight", "rounds": 3, "isTitle": false}
+    {
+      "fighterA": "Conor McGregor",
+      "fighterB": "Max Holloway",
+      "weightClass": "Welterweight",
+      "rounds": 5,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Benoît Saint Denis",
+      "fighterB": "Paddy Pimblett",
+      "weightClass": "Lightweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Cory Sandhagen",
+      "fighterB": "Mario Bautista",
+      "weightClass": "Bantamweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Brandon Royval",
+      "fighterB": "Lone'er Kavanagh",
+      "weightClass": "Flyweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "King Green",
+      "fighterB": "Terrance McKinney",
+      "weightClass": "Lightweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Nikita Krylov",
+      "fighterB": "Robert Whittaker",
+      "weightClass": "Light Heavyweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Gable Steveson",
+      "fighterB": "Elisha Ellison",
+      "weightClass": "Heavyweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Cody Garbrandt",
+      "fighterB": "Adrian Yanez",
+      "weightClass": "Bantamweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Luke Riley",
+      "fighterB": "Kai Kamaka III",
+      "weightClass": "Featherweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Tracy Cortez",
+      "fighterB": "Wang Cong",
+      "weightClass": "Women's Flyweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Damian Pinas",
+      "fighterB": "Cesar Almeida",
+      "weightClass": "Middleweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Ryan Gandra",
+      "fighterB": "Zachary Reese",
+      "weightClass": "Middleweight",
+      "rounds": 3,
+      "isTitle": false
+    },
+    {
+      "fighterA": "Alessandro Costa",
+      "fighterB": "Cody Durden",
+      "weightClass": "Flyweight",
+      "rounds": 3,
+      "isTitle": false
+    }
   ]
 }

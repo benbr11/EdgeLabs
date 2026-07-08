@@ -35,8 +35,9 @@ WEB = os.path.join(BASE, "web")
 #  CONFIDENCE TIERS  ("Best Bets")
 #  BEST_BET_THRESHOLD is chosen from the WALK-FORWARD OUT-OF-SAMPLE backtest
 #  (ufc_backtest.py confidence-threshold sweep): it is the LOWEST min-win-prob T
-#  whose clean OOS hit-rate >= 80% on adequate N.  As of the latest backtest:
-#      T = 0.75  ->  82.5% OOS hit-rate, N = 97 (23.1% of fights qualify).
+#  whose clean OOS hit-rate >= 80% on adequate N.  As of the latest backtest
+#  (after the unranked-fighter DB expansion, build_ufc_extra.py):
+#      T = 0.75  ->  80.4% OOS hit-rate, N = 189 (25.3% of fights qualify).
 #  This is the honest 80%: on selected high-conviction picks only, with the
 #  threshold picked on OOS results (not in-sample), so it does not overfit.
 #  LEAN_THRESHOLD (~0.62) is a real edge but below the 80% bar; below it is a
@@ -68,16 +69,14 @@ def _resolved_name(fighters, name):
     if s is None:
         return None
     resolved = str(s["fighter"])
-    q = str(name).strip().lower()
-    r = resolved.lower()
+    # normalized comparison (accents / curly vs straight apostrophes) so ESPN display
+    # names match the DB; guards against a stray substring matching an unrelated fighter.
+    q = ufc_model._norm_name(name)
+    r = ufc_model._norm_name(resolved)
     if q == r:
         return resolved
-    # accept the fuzzy hit only if the query name is contained in the resolved
-    # name or vice-versa AND the last names line up (guards against a stray
-    # substring matching an unrelated fighter).
-    if q in r or r in q:
-        if q.split()[-1] == r.split()[-1]:
-            return resolved
+    if (q in r or r in q) and q.split()[-1] == r.split()[-1]:
+        return resolved
     return None
 
 
@@ -207,7 +206,24 @@ def build_card():
     return card
 
 
+def refresh_nextcard():
+    """Self-update raw_nextcard.json to the next scheduled UFC event before building.
+    Falls back to the existing cached file (offline / API hiccup). Skip with
+    env WC_UFC_NO_FETCH=1."""
+    if os.environ.get("WC_UFC_NO_FETCH") == "1":
+        print("[ufc] fetch skipped (WC_UFC_NO_FETCH=1); using cached raw_nextcard.json")
+        return
+    try:
+        import build_ufc_nextcard
+        c = build_ufc_nextcard.fetch_nextcard(write=True)
+        print("[ufc] next card: {} ({}) — {} bouts".format(c["event"], c["date"], len(c["bouts"])))
+    except Exception as e:
+        print("[ufc] WARNING: could not fetch next card ({}: {}); using cached raw_nextcard.json"
+              .format(type(e).__name__, str(e)[:80]))
+
+
 def main():
+    refresh_nextcard()
     card = build_card()
     os.makedirs(WEB, exist_ok=True)
     out_path = os.path.join(WEB, "ufc_card.js")

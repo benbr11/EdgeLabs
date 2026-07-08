@@ -68,6 +68,10 @@ jobs:
         continue-on-error: true
         run: |
           python build_ufc_rankings.py
+      - name: Build UFC next-card predictions (fetch next scheduled card + predict; self-updating)
+        continue-on-error: true
+        run: |
+          python export_ufc.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

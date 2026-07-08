@@ -158,6 +158,12 @@ HALFLIFE_DAYS = float(os.environ.get("WC_HALFLIFE_DAYS", "600.0"))   # recency h
 # top of the 2-year recency half-life double-counts recency and lets a 2-3 game WC
 # sample (e.g. Morocco's clean sheets) distort a rating. Tunable via WC_BOOST env var.
 WC_BOOST = float(os.environ.get("WC_BOOST", "1.5"))
+# EXPERIMENT (WC_OPP_GAMMA > 0): additionally weight each CURRENT-TOURNAMENT game by the
+# opponent's historical strength (FIFA points), so "quality of wins" -- form shown against
+# strong teams -- counts more than beating minnows. This is ON TOP of the goals model's
+# existing opponent-RATE adjustment. 0 = off (reproduces the current model exactly).
+# Tuned out-of-sample via wc_oppstrength_test.py against real knockout results.
+WC_OPP_GAMMA = float(os.environ.get("WC_OPP_GAMMA", "1.0"))
 def weight(d):
     age = (MAXDATE - d).days
     return 0.5 ** (age / HALFLIFE_DAYS)
@@ -196,15 +202,26 @@ for d, h, a, hs, as_, neutral, eh, ea, wb in recent:
     for t in (h, a):
         att.setdefault(t, 1.0); dfn.setdefault(t, 1.0)
 
+# opponent-strength multipliers (~1 avg, >1 strong) from FIFA points, mean-normalised.
+# Only used when WC_OPP_GAMMA>0, and only on current-WC games (both teams are WC teams).
+_fifa_gm = math.exp(sum(math.log(v) for v in FIFA.values()) / len(FIFA))
+STR = {t: (FIFA[t] / _fifa_gm) ** WC_OPP_GAMMA for t in FIFA}
+
 for iteration in range(60):
     na = {t: 0.0 for t in att}; da = {t: 0.0 for t in att}
     nd = {t: 0.0 for t in att}; dd = {t: 0.0 for t in att}
     for d, h, a, hs, as_, neutral, eh, ea, wb in recent:
         w = weight(d) * wb
-        na[h] += w * eh;  da[h] += w * AVG * dfn[a]
-        nd[a] += w * eh;  dd[a] += w * AVG * att[h]
-        na[a] += w * ea;  da[a] += w * AVG * dfn[h]
-        nd[h] += w * ea;  dd[h] += w * AVG * att[a]
+        # quality-of-opposition weighting: on WC games, weight each team's contribution
+        # by its opponent's strength (beating a titan > beating a minnow).
+        if WC_OPP_GAMMA and (d.isoformat(), frozenset((h, a))) in m_xg and h in STR and a in STR:
+            wh = w * STR[a]; wa = w * STR[h]
+        else:
+            wh = wa = w
+        na[h] += wh * eh;  da[h] += wh * AVG * dfn[a]
+        nd[h] += wh * ea;  dd[h] += wh * AVG * att[a]
+        na[a] += wa * ea;  da[a] += wa * AVG * dfn[h]
+        nd[a] += wa * eh;  dd[a] += wa * AVG * att[h]
     for t in att:
         if da[t] > 0: att[t] = na[t] / da[t]
         if dd[t] > 0: dfn[t] = nd[t] / dd[t]
@@ -317,6 +334,25 @@ gs = (sum((v-gm)**2 for v in g_str.values())/len(TEAMS)) ** 0.5
 G_star = {t: gm + gs*cons_z[t] for t in TEAMS}
 A_star = {t: (G_star[t] + tilt[t]) / 2 for t in TEAMS}   # final attack log-strength
 D_star = {t: (G_star[t] - tilt[t]) / 2 for t in TEAMS}   # final defense log-strength
+
+# --- MANUAL ANALYST OVERRIDE (NOT data-driven) ------------------------------
+# User directive: rank France #1 outright. This is a deliberate manual prior that
+# overrides the model's data-driven ratings. It is NOT supported by results/xG/Elo/
+# FIFA, nor by out-of-sample calibration (see wc_favorite_calibration.py, which shows
+# the model is already well-calibrated where France sits). Set FRANCE_NO1=False to
+# revert to the pure model. FRANCE_MARGIN is the log-strength cushion above the
+# current top team (larger = more dominant France).
+FRANCE_NO1   = os.environ.get("FRANCE_NO1", "1") == "1"
+FRANCE_MARGIN = float(os.environ.get("FRANCE_MARGIN", "0.15"))
+if FRANCE_NO1 and "France" in TEAMS:
+    _top = max(A_star[t] + D_star[t] for t in TEAMS if t != "France")
+    _tilt_fr = A_star["France"] - D_star["France"]        # keep France's attack-lean shape
+    _G_fr = _top + FRANCE_MARGIN
+    A_star["France"] = (_G_fr + _tilt_fr) / 2
+    D_star["France"] = (_G_fr - _tilt_fr) / 2
+    print(f"[MANUAL OVERRIDE] France forced to #1 (overall log-strength -> {_G_fr:.3f}, "
+          f"margin {FRANCE_MARGIN} over prior top; not data-driven)")
+
 att_mult = {t: math.exp(A_star[t]) for t in TEAMS}        # used by the simulator
 dfn_mult = {t: math.exp(-D_star[t]) for t in TEAMS}       # <1 = good defense
 

@@ -25,6 +25,7 @@ import os
 import glob
 import math
 import re
+import unicodedata
 import datetime as dt
 
 import numpy as np
@@ -257,7 +258,9 @@ def _normalize_db(path, code):
     raw = pd.read_csv(path)
     out = pd.DataFrame()
     out["fighter"] = raw["fighter"].astype(str).str.strip()
-    out["division"] = DIVISION_NAMES.get(code, code)
+    # extras use a "<code>x" division_code for shrinkage isolation; display the real division.
+    _base = code[:-1] if (code.endswith("x") and code[:-1] in DIVISION_NAMES) else code
+    out["division"] = DIVISION_NAMES.get(_base, code)
     out["division_code"] = code
 
     for canon, aliases in STAT_ALIASES.items():
@@ -801,6 +804,18 @@ def _shrink_elo(elo, nfights, fighters):
 # --------------------------------------------------------------------------- #
 #  Fighter-stat accessor
 # --------------------------------------------------------------------------- #
+def _norm_name(s):
+    """Fold a fighter name for matching: strip accents, unify apostrophe/dash variants,
+    lowercase, collapse whitespace. Makes ESPN display names (curly ' , accents) match
+    the ufcstats-based DB (e.g. 'Lone'er Kavanagh' vs 'Lone'er Kavanagh', 'Benoît'/'Benoit')."""
+    s = unicodedata.normalize("NFKD", str(s))
+    s = "".join(c for c in s if not unicodedata.combining(c))  # drop accents
+    for ch in "’‘ʼ`´":                 # ' ' ʼ ` ´  -> '
+        s = s.replace(ch, "'")
+    s = s.replace("–", "-").replace("—", "-")        # en/em dash -> hyphen
+    return " ".join(s.lower().split())
+
+
 def get_stats(fighters, name):
     """Return a dict of canonical, default-filled stats for a fighter (case-insensitive)."""
     m = fighters[fighters["fighter"].str.lower() == str(name).lower()]
@@ -808,6 +823,14 @@ def get_stats(fighters, name):
         # fuzzy: last-name contains
         m = fighters[fighters["fighter"].str.lower().str.contains(
             re.escape(str(name).lower()), na=False)]
+    if len(m) == 0:
+        # unicode/punctuation-normalized fallback (curly vs straight apostrophes, accents).
+        # Only runs when the fast paths miss, so hot backtest loops are unaffected.
+        qn = _norm_name(name)
+        norm = fighters["fighter"].map(_norm_name)
+        m = fighters[norm == qn]
+        if len(m) == 0:
+            m = fighters[norm.str.contains(re.escape(qn), na=False)]
     if len(m) == 0:
         return None
     row = m.iloc[0].to_dict()

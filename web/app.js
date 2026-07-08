@@ -83,14 +83,18 @@ function predict(A,B,o){
     if(i>j)pA+=p; else if(j>i)pB+=p; else pD+=p; exAraw+=i*p; exBraw+=j*p; }
   // TOTALS market (expected goals, scorelines, BTTS, clean sheets): goal-level-calibrated.
   const {Mx:Mt,mg:mgt}=dcMatrix(lamA*GOAL_SCALE,lamB*GOAL_SCALE,dA,dB);
-  let exA=0,exB=0,pH0=0,pA0=0; const flat=[];
+  let exA=0,exB=0,pH0=0,pA0=0,o25=0,a2=0,b2=0,wtnA=0,wtnB=0; const flat=[];
   for(let i=0;i<=mgt;i++)for(let j=0;j<=mgt;j++){ const p=Mt[i][j];
     exA+=i*p; exB+=j*p;
-    if(i===0)pH0+=p; if(j===0)pA0+=p; flat.push([p,i,j]); }
+    if(i===0)pH0+=p; if(j===0)pA0+=p;
+    if(i+j>2.5)o25+=p; if(i>=2)a2+=p; if(j>=2)b2+=p;
+    if(j===0&&i>=1)wtnA+=p; if(i===0&&j>=1)wtnB+=p;
+    flat.push([p,i,j]); }
   flat.sort((x,y)=>y[0]-x[0]);
   const btts=Math.max(0,1-pH0-pA0+Mt[0][0]);
   const r={A,B,lamA,lamB,pA:pA*100,pD:pD*100,pB:pB*100,exA,exB,exAraw,exBraw,
            btts:btts*100, csA:pA0*100, csB:pH0*100,
+           o25:o25*100, a2:a2*100, b2:b2*100, wtnA:wtnA*100, wtnB:wtnB*100,
            top:flat.slice(0,3).map(([p,i,j])=>({i,j,p:p*100}))};
   if(o.knockout){
     const et=dcMatrix(lamA/3,lamB/3,dA,dB); let qa=0,qb=0,qd=0;
@@ -239,8 +243,11 @@ function renderResult(r,ko,odds){
         <div><div class="n">${r.pB.toFixed(1)}%</div><div class="l">${flag(B)} ${B}</div></div></div>`;
   }
   h+=`<div class="pills"><span class="pillstat">Exp. goals <b>${r.exA.toFixed(2)}</b> – <b>${r.exB.toFixed(2)}</b></span>`+
+     `<span class="pillstat">Over 2.5 <b>${r.o25.toFixed(0)}%</b></span>`+
      `<span class="pillstat">Both score <b>${r.btts.toFixed(0)}%</b></span>`+
-     `<span class="pillstat">Clean sheet <b>${r.csA.toFixed(0)}%</b> / <b>${r.csB.toFixed(0)}%</b></span></div>`;
+     `<span class="pillstat">Clean sheet <b>${r.csA.toFixed(0)}%</b> / <b>${r.csB.toFixed(0)}%</b></span>`+
+     `<span class="pillstat">Score 2+ <b>${r.a2.toFixed(0)}%</b> / <b>${r.b2.toFixed(0)}%</b></span>`+
+     `<span class="pillstat">Win to nil <b>${r.wtnA.toFixed(0)}%</b> / <b>${r.wtnB.toFixed(0)}%</b></span></div>`;
   h+=`<h4>Most likely scorelines</h4>`;
   const tmax=Math.max.apply(null,r.top.map(s=>s.p))||1;
   h+=r.top.map(s=>`<div class="scoreline"><span class="sl-teams">${flag(A)} <b>${s.i}</b>–<b>${s.j}</b> ${flag(B)}</span><span class="sl-bar"><i style="width:${(s.p/tmax*100).toFixed(0)}%"></i></span><span class="p">${s.p.toFixed(1)}%</span></div>`).join("");

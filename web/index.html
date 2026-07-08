@@ -2,18 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#4f8cff">
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>EdgeLabs — Multi-Sport Predictions</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="edgelab-icon.svg">
 <link rel="apple-touch-icon" href="edgelab-icon.png">
-<link rel="apple-touch-icon" sizes="180x180" href="edgelab-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="EdgeLabs">
 <script>if('serviceWorker' in navigator){addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 <style>
 :root{
@@ -30,7 +25,11 @@ body.light{
   --headfrom:#1d4ed8; --headto:#4f46e5; --headtxt:#eaf1ff;
   --teamA:#2563eb; --teamB:#d97706; --draw:#94a3b8; --good:#0891b2;
 }
-*{box-sizing:border-box} html,body{margin:0}
+*{box-sizing:border-box}
+/* App-locked to the screen: allow panning/scroll, block pinch- and double-tap-zoom;
+   no rubber-band overscroll; no iOS text auto-zoom or horizontal drift. */
+html,body{margin:0;width:100%;overflow-x:hidden;touch-action:pan-x pan-y;
+  overscroll-behavior:none;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{background:var(--bg);color:var(--txt);font:15px/1.45 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
   -webkit-font-smoothing:antialiased;padding-bottom:60px;transition:background .2s,color .2s}
 header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,var(--headfrom),var(--headto));
@@ -414,6 +413,21 @@ header{padding-right:96px}
   document.getElementById('goHome').onclick=function(){ show('home'); };
   var h=(location.hash||'').replace('#',''); show(ids[h]?h:'home');
   window.ELshow=show;
+})();
+</script>
+<script>
+/* Lock zoom on iOS Safari, which ignores user-scalable=no and still allows the
+   pinch/double-tap gestures that make the app "zoom accidentally while scrolling".
+   These block the zoom gestures without affecting taps or normal scrolling. */
+(function(){
+  // Pinch-zoom (iOS ignores touch-action for pinch). Double-tap zoom is handled by
+  // the CSS touch-action:pan-x pan-y, so we don't touch touchend and never suppress taps.
+  ['gesturestart','gesturechange','gestureend'].forEach(function(ev){
+    document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
+  });
+  document.addEventListener('touchmove', function(e){         // block pinch (2+ fingers)
+    if(e.touches && e.touches.length>1){ e.preventDefault(); }
+  }, {passive:false});
 })();
 </script>
 </body>

@@ -274,6 +274,24 @@ def main():
     print("-" * 64); print("  Top 3 most likely scorelines:")
     for (ga,gb), c in top:
         print(f"     {A} {ga} - {gb} {B}   {c*100:5.1f}%")
+    # ---- betting props, from the totals-calibrated score matrix (Mt) ----
+    # These expose the model's existing goal distribution as book-style props; they use
+    # the GOAL_SCALE'd totals matrix, consistent with expected goals / scorelines above.
+    o15 = sum(Mt[i][j] for i in rngt for j in rngt if i+j > 1.5)
+    o25 = sum(Mt[i][j] for i in rngt for j in rngt if i+j > 2.5)
+    o35 = sum(Mt[i][j] for i in rngt for j in rngt if i+j > 3.5)
+    btts = sum(Mt[i][j] for i in rngt for j in rngt if i >= 1 and j >= 1)
+    csA = sum(Mt[i][0] for i in rngt); csB = sum(Mt[0][j] for j in rngt)   # opponent fails to score
+    a2 = sum(Mt[i][j] for i in rngt for j in rngt if i >= 2)
+    b2 = sum(Mt[i][j] for i in rngt for j in rngt if j >= 2)
+    wtnA = sum(Mt[i][0] for i in rngt if i >= 1); wtnB = sum(Mt[0][j] for j in rngt if j >= 1)
+    print("-" * 64); print("  Betting props (totals-calibrated):")
+    print(f"    Total goals (model)  : {exA+exB:.2f}   |   Over 2.5 {o25*100:.0f}% / Under {(1-o25)*100:.0f}%"
+          f"   (O1.5 {o15*100:.0f}%, O3.5 {o35*100:.0f}%)")
+    print(f"    Both teams to score  : Yes {btts*100:.0f}% / No {(1-btts)*100:.0f}%")
+    print(f"    Clean sheet          : {A} {csA*100:.0f}%   |   {B} {csB*100:.0f}%")
+    print(f"    Team to score 2+     : {A} {a2*100:.0f}%   |   {B} {b2*100:.0f}%")
+    print(f"    Win to nil           : {A} {wtnA*100:.0f}%   |   {B} {wtnB*100:.0f}%")
     if a.odds:
         oA, oD, oB = a.odds; raw = [1/oA, 1/oD, 1/oB]; ov = sum(raw)
         imp = [r/ov*100 for r in raw]; mp = [pA, pD, pB]; od = [oA, oD, oB]; lbl = [A, "Draw", B]

@@ -66,7 +66,7 @@
   function ufcSlate(){ var C=window.UFC_CARD; return C?(C.bouts||[]).filter(function(b){return !b.dataGap;}).length:0; }
   var CFG=[
     {app:'app-soccer', name:'World Cup', thr:70, hit:87.5, mkt:55, getPicks:soccerPicks, slate:soccerSlate},
-    {app:'app-ufc',    name:'UFC',       thr:75, hit:82.5, mkt:66, getPicks:ufcPicks, slate:ufcSlate},
+    {app:'app-ufc',    name:'UFC',       thr:75, hit:83.9, mkt:66, getPicks:ufcPicks, slate:ufcSlate},
     {app:'app-nba',    name:'NBA',       thr:80, hit:83.7, mkt:69},
     {app:'app-nfl',    name:'NFL',       thr:75, hit:75.0, mkt:66},
     {app:'app-mlb',    name:'MLB',       thr:80, hit:75.0, mkt:59},

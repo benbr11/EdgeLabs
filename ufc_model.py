@@ -33,6 +33,15 @@ import pandas as pd
 
 import ufc_positional as POS    # shared positional/striking feature engineering
 
+# Scale on the grappler premium (the model's market-underprices-wrestling edge). 1.0 = as
+# tuned/validated; lower = more market-aware. Tune/test via WC_GRAP_SCALE against the backtest.
+GRAP_SCALE = float(os.environ.get("WC_GRAP_SCALE", "1.0"))
+# Discount a controller's grappler premium by the OPPONENT's submission threat off the back.
+# Being taken down is far less of a liability if you're dangerous from the bottom, so an
+# elite wrestler's edge over a real submission grappler (e.g. Pimblett) should shrink toward
+# the market rather than balloon. 0 = off; validated/tuned against the backtest.
+SUB_DISCOUNT = float(os.environ.get("WC_SUB_DISCOUNT", "0.45"))
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # --------------------------------------------------------------------------- #
@@ -959,9 +968,12 @@ def matchup(a, b):
     def prem_mult(escore):
         # ~0.6x baseline (still some grappling credit) up to ~1.85x for a true elite.
         return 0.60 + 1.25 * (escore ** 1.3)
-    grap_edge_a = prem_mult(ea) * mat_a * (0.5 + 0.5 * sb)   # bigger if opp is a pure striker
-    grap_edge_b = prem_mult(eb) * mat_b * (0.5 + 0.5 * sa)
-    grappler_premium = grap_edge_a - grap_edge_b    # signed, favors A if positive
+    # submission threat off the back: a dangerous bottom game means getting controlled is
+    # much less of a liability (credits real submission grapplers, not just top wrestlers).
+    def sub_threat(f): return min(1.0, f.get("sub_att_per15", 0.0) / 1.5)
+    grap_edge_a = prem_mult(ea) * mat_a * (0.5 + 0.5 * sb) * (1.0 - SUB_DISCOUNT * sub_threat(b))
+    grap_edge_b = prem_mult(eb) * mat_b * (0.5 + 0.5 * sa) * (1.0 - SUB_DISCOUNT * sub_threat(a))
+    grappler_premium = (grap_edge_a - grap_edge_b) * GRAP_SCALE    # signed, favors A if positive
 
     # control-time differential
     ctrl_edge = (a["ctrl_sec_per_round"] - b["ctrl_sec_per_round"]) / 120.0

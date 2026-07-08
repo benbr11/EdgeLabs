@@ -8,7 +8,7 @@
   var body = document.getElementById('accuracy-body'); if(!body) return;
   var S = [
     { icon:'🥊', name:'UFC',          ours:69.8, vegas:'~66%',   verdict:'At market vs closing line', beat:false,
-      tier:'Best-bet picks (≥75%): 82.5%', n:'clean walk-forward · at market head-to-head vs the book' },
+      tier:'Best-bet picks (≥75%): 83.9%', n:'clean walk-forward · at market head-to-head vs the book' },
     { icon:'🏀', name:'NBA',          ours:67.4, vegas:'~69%',   verdict:'Matches the books', beat:false,
       tier:'Top picks (≥80%): 83.7%', n:'2,462 games' },
     { icon:'🏈', name:'NFL',          ours:65.9, vegas:'~66%',   verdict:'Matches Vegas', beat:false,

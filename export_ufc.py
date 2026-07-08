@@ -36,9 +36,9 @@ WEB = os.path.join(BASE, "web")
 #  BEST_BET_THRESHOLD is chosen from the WALK-FORWARD OUT-OF-SAMPLE backtest
 #  (ufc_backtest.py confidence-threshold sweep): it is the LOWEST min-win-prob T
 #  whose clean OOS hit-rate >= 80% on adequate N.  As of the latest backtest
-#  (ranked-fighter DB; the unranked expansion was reverted -- it diluted the tier
-#  to 80.4% by adding thin-data fighters that are hard to predict reliably):
-#      T = 0.75  ->  82.5% OOS hit-rate, N = 97 (23.1% of fights qualify).
+#  (ranked-fighter DB + submission-threat discount on the grappler premium, which
+#  credits dangerous bottom-game grapplers and lifted the tier):
+#      T = 0.75  ->  83.9% OOS hit-rate, N = 93 (22.1% of fights qualify).
 #  This is the honest 80%: on selected high-conviction picks only, with the
 #  threshold picked on OOS results (not in-sample), so it does not overfit.
 #  LEAN_THRESHOLD (~0.62) is a real edge but below the 80% bar; below it is a

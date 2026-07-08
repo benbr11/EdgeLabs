@@ -22,7 +22,7 @@ Examples:
     python simulate.py "Mexico" "Germany" --home Mexico --venue-altitude 2240
     python simulate.py France Senegal --avail-a 0.8 --rest-a 2 --stakes-b must-win --weather heat --venue-temp 36
 """
-import csv, math, random, argparse, sys, collections, unicodedata
+import csv, math, random, argparse, sys, collections, unicodedata, os
 import groups as G
 
 PROJ = r"C:\Users\bbraudo\Desktop\Claude Output\World Cup Model"

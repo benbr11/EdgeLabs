@@ -14,6 +14,9 @@ const C2_RELEVEL = (()=>{ let s=0,n=0; for(const a of TEAMS){ const ap=Math.pow(
 // goals, scorelines, BTTS, clean sheets); W/D/L and advance% stay on the unscaled lambdas,
 // which validate better for match RESULT. GOAL_SCALE=1 recovers the old totals behaviour.
 const GOAL_SCALE = 0.80;
+// Stage-aware totals: knockout games score less than group games, so they get their own
+// scale (WC knockouts ~2.5 g/game) rather than the qualifier-calibrated 0.80. Mirrors simulate.py.
+const KO_GOAL_SCALE = 0.88;
 const FLAG_CODE={Canada:"ca",Mexico:"mx","United States":"us",Australia:"au",Iran:"ir",Iraq:"iq",Japan:"jp",Jordan:"jo",Qatar:"qa","Saudi Arabia":"sa","South Korea":"kr",Uzbekistan:"uz",Algeria:"dz","Cape Verde":"cv","DR Congo":"cd",Egypt:"eg",Ghana:"gh","Ivory Coast":"ci",Morocco:"ma",Senegal:"sn","South Africa":"za",Tunisia:"tn","Curaçao":"cw",Haiti:"ht",Panama:"pa",Argentina:"ar",Brazil:"br",Colombia:"co",Ecuador:"ec",Paraguay:"py",Uruguay:"uy","New Zealand":"nz",Austria:"at",Belgium:"be","Bosnia and Herzegovina":"ba",Croatia:"hr","Czech Republic":"cz",England:"gb-eng",France:"fr",Germany:"de",Netherlands:"nl",Norway:"no",Portugal:"pt",Scotland:"gb-sct",Spain:"es",Sweden:"se",Switzerland:"ch",Turkey:"tr"};
 function flag(t){ const c=FLAG_CODE[t]; return c?`<img class="flag" src="https://flagcdn.com/w40/${c}.png" alt="" loading="lazy" onerror="this.style.display='none'">`:""; }
 const TEAM_COLOR={Canada:"#D52B1E",Mexico:"#006847","United States":"#2A3C7D",Australia:"#00843D",Iran:"#239F40",Iraq:"#1A8A4A",Japan:"#BC002D",Jordan:"#007A3D",Qatar:"#8A1538","Saudi Arabia":"#1B7A3D","South Korea":"#003478",Uzbekistan:"#1EB53A",Algeria:"#1B7A3D","Cape Verde":"#0A3A8B","DR Congo":"#1077E8",Egypt:"#CE1126",Ghana:"#007B3F","Ivory Coast":"#FF7900",Morocco:"#006233",Senegal:"#00853F","South Africa":"#007749",Tunisia:"#E70013","Curaçao":"#00248F",Haiti:"#00269A",Panama:"#0049A5",Argentina:"#6CA6DC",Brazil:"#1FAA52",Colombia:"#E0B100",Ecuador:"#E8A200",Paraguay:"#C8102E",Uruguay:"#0038A8","New Zealand":"#3A3A3A",Austria:"#ED2939",Belgium:"#C9A227","Bosnia and Herzegovina":"#1B3A8B",Croatia:"#D81E2C","Czech Republic":"#11457E",England:"#CF142B",France:"#21407F",Germany:"#3A3A3A",Netherlands:"#F36C21",Norway:"#BA0C2F",Portugal:"#0A6634",Scotland:"#005EB8",Spain:"#C60B1E",Sweden:"#D9A400",Switzerland:"#D52B1E",Turkey:"#E30A17"};
@@ -82,7 +85,8 @@ function predict(A,B,o){
   for(let i=0;i<=mg;i++)for(let j=0;j<=mg;j++){ const p=Mx[i][j];
     if(i>j)pA+=p; else if(j>i)pB+=p; else pD+=p; exAraw+=i*p; exBraw+=j*p; }
   // TOTALS market (expected goals, scorelines, BTTS, clean sheets): goal-level-calibrated.
-  const {Mx:Mt,mg:mgt}=dcMatrix(lamA*GOAL_SCALE,lamB*GOAL_SCALE,dA,dB);
+  const _gs = o.knockout ? KO_GOAL_SCALE : GOAL_SCALE;
+  const {Mx:Mt,mg:mgt}=dcMatrix(lamA*_gs,lamB*_gs,dA,dB);
   let exA=0,exB=0,pH0=0,pA0=0,o25=0,a2=0,b2=0,wtnA=0,wtnB=0; const flat=[];
   for(let i=0;i<=mgt;i++)for(let j=0;j<=mgt;j++){ const p=Mt[i][j];
     exA+=i*p; exB+=j*p;

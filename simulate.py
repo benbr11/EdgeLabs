@@ -60,6 +60,11 @@ COMPRESS = 0.60
 # better for match RESULT (the margin- and total-optimal goal levels genuinely differ,
 # so the two markets are decoupled). GOAL_SCALE=1.0 recovers the old totals behaviour.
 GOAL_SCALE = 0.80
+# STAGE-AWARE totals: knockout games score materially less than group games (WC 2026:
+# 2.47 vs 3.25 goals/game -- cagey, do-or-die), so a single flat scale mis-fits both.
+# Knockouts get their own (higher-than-0.80) scale calibrated to WC knockout scoring
+# (~2.5/g). Group/normal keeps the OOS-validated 0.80. Env-tunable; = GOAL_SCALE reverts.
+KO_GOAL_SCALE = float(os.environ.get("WC_KO_GOAL_SCALE", "0.88"))
 
 ALIASES = {
     "usa":"United States","us":"United States","america":"United States",
@@ -213,8 +218,10 @@ def main():
     pA = 100*sum(M[i][j] for i in rng for j in rng if i > j)
     pB = 100*sum(M[i][j] for i in rng for j in rng if j > i)
     pD = 100*sum(M[i][i] for i in rng)
-    # TOTALS market (expected goals + scorelines): goal-level-calibrated lambdas.
-    Mt, maxgt = dc_matrix(lamA*GOAL_SCALE, lamB*GOAL_SCALE, dA, dB)
+    # TOTALS market (expected goals + scorelines): goal-level-calibrated lambdas,
+    # stage-aware (knockouts score less than group games).
+    _gs = KO_GOAL_SCALE if knockout else GOAL_SCALE
+    Mt, maxgt = dc_matrix(lamA*_gs, lamB*_gs, dA, dB)
     rngt = range(maxgt+1)
     exA = sum(i*sum(Mt[i]) for i in rngt)
     exB = sum(j*sum(Mt[i][j] for i in rngt) for j in rngt)

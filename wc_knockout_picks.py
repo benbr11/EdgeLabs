@@ -18,7 +18,8 @@ try: sys.stdout.reconfigure(encoding="utf-8")
 except Exception: pass
 BASE = os.path.dirname(os.path.abspath(__file__))
 COMPRESS = 0.60; RHO = -0.12; VAR_BASE, VAR_SLOPE = 6.0, 0.34
-GOAL_SCALE = 0.80   # totals-only goal-level calibration (see simulate.py / wc_totals_calibrate.py)
+GOAL_SCALE = 0.88   # knockout totals scale (knockouts score less than group but above the 0.80
+                    # qualifier-calibrated base; WC knockouts ~2.5 g/game). See simulate.py.
 HOSTS = {"United States", "Canada", "Mexico"}
 XG_NAME = {"Cabo Verde": "Cape Verde", "Congo DR": "DR Congo", "Czechia": "Czech Republic",
            "Côte d'Ivoire": "Ivory Coast", "IR Iran": "Iran", "Türkiye": "Turkey", "USA": "United States"}

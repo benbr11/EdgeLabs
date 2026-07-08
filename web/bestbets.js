@@ -24,7 +24,7 @@
       body=picks.slice(0,6).map(function(p){
         return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)">'
           +'<div style="min-width:46px;text-align:center;font-weight:800;font-size:18px;color:var(--good)">'+p.conf+'%</div>'
-          +'<div style="flex:1"><div style="font-weight:700">'+p.pick+'</div><div class="mini">'+p.ctx+'</div></div></div>';
+          +'<div style="flex:1"><div style="font-weight:700">⭐ '+p.pick+'</div><div class="mini">'+p.ctx+'</div></div></div>';
       }).join('');
     } else {
       var n = cfg.slate ? (cfg.slate()||0) : 0;

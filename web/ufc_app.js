@@ -33,7 +33,7 @@
     return conf >= BEST_T ? 'best' : (conf >= LEAN_T ? 'lean' : 'pass');
   }
   var TIER_META = {
-    best: {label:'BEST BET',  bg:'rgba(52,211,153,.16)', col:'var(--good)'},
+    best: {label:'⭐ BEST BET',  bg:'rgba(52,211,153,.16)', col:'var(--good)'},
     lean: {label:'LEAN',      bg:'rgba(139,92,255,.16)', col:'var(--accent2)'},
     pass: {label:'PASS · coin-flip', bg:'var(--panel2)', col:'var(--mut)'}
   };

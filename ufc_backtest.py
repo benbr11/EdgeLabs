@@ -59,7 +59,7 @@ import ufc_model as M
 import ufc_positional as POS
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-TEST_START = pd.Timestamp("2024-01-01")
+TEST_START = pd.Timestamp(os.environ.get("UFC_TEST_START", "2024-01-01"))
 MIN_PRIOR_FIGHTS = 3
 
 
@@ -565,7 +565,11 @@ def main():
     bout_seen = set()
 
     # closing odds map (de-vigged) keyed by (sorted pair, date) -> dict
-    odds = pd.read_csv(os.path.join(BASE, "raw_calibration_odds.csv"), parse_dates=["date"])
+    _odds_path = os.environ.get("UFC_ODDS_CSV", "raw_calibration_odds.csv")
+    if not os.path.isabs(_odds_path):
+        _odds_path = os.path.join(BASE, _odds_path)
+    odds = pd.read_csv(_odds_path, parse_dates=["date"])
+    print(f"  odds file: {os.path.basename(_odds_path)} ({len(odds)} rows)")
     odds_map = {}
     for _, r in odds.iterrows():
         k = tuple(sorted([str(r["fighter_a"]).strip(), str(r["fighter_b"]).strip()])) + (r["date"].toordinal(),)
@@ -811,6 +815,7 @@ def main():
         ll_model, ll_book = [], []
         # collect per-bet records so we can sweep an EDGE THRESHOLD afterwards
         bet_recs = []   # (edge, dec_odds, won)  for the side the model would back
+        style_recs = [] # (fav_grappler_index, model_fav_p, book_fav_p, fav_won) -> style-bias audit
 
         def amer_to_dec(o):
             o = float(o)
@@ -850,9 +855,19 @@ def main():
             edge_A = p_model - book_pA
             edge_B = (1 - p_model) - book_pB
             if edge_A >= edge_B:
-                bet_recs.append((edge_A, dec_A, 1 if y == 1 else 0))
+                bet_recs.append((edge_A, dec_A, 1 if y == 1 else 0, pt["date"], book_pA))
             else:
-                bet_recs.append((edge_B, dec_B, 1 if y == 0 else 0))
+                bet_recs.append((edge_B, dec_B, 1 if y == 0 else 0, pt["date"], book_pB))
+
+            # style-bias audit: track the MODEL-FAVORED side's grappler_index, the model vs
+            # book prob on that side, and whether it won -> catches a fighter-TYPE over/under-
+            # weighting (e.g. a grappler over-fire) systematically, not one fight at a time.
+            fav_name = A if p_model >= 0.5 else B
+            sfav = M.get_stats(fighters, fav_name)
+            fav_gi = M.grappler_index(sfav) if sfav is not None else 0.5
+            style_recs.append((fav_gi, max(p_model, 1 - p_model),
+                               book_pA if p_model >= 0.5 else book_pB,
+                               (y == 1) if p_model >= 0.5 else (y == 0)))
 
         if n_eval:
             print(f"\n  evaluable (names matched): {n_eval}")
@@ -861,12 +876,29 @@ def main():
             print(f"  model log-loss          : {np.mean(ll_model):.4f}")
             print(f"  book  log-loss          : {np.mean(ll_book):.4f}")
 
+            # ---- SYSTEMATIC BIAS BY STYLE (auto-catch a fighter-TYPE over/under-weighting) ----
+            def _summ(recs, lbl):
+                if len(recs) < 8:
+                    print(f"    {lbl:<16} n={len(recs)}  (too few to judge)"); return None
+                md = np.mean([r[1] for r in recs]); bk = np.mean([r[2] for r in recs])
+                hit = np.mean([r[3] for r in recs]); bias = (md - bk) * 100
+                # FLAG only when the model is BOTH more confident than the book AND misses its
+                # number -> that's an over-fire (a real edge would still hit its rate).
+                flag = " ⚠ POSSIBLE OVER-FIRE" if (bias > 6 and (md - hit) > 0.06) else ""
+                print(f"    {lbl:<16} n={len(recs)}  model {md*100:.0f}% vs book {bk*100:.0f}% "
+                      f"(bias {bias:+.0f})  actual win-rate {hit*100:.0f}%{flag}")
+                return (lbl, bias, (md - hit) * 100, len(recs))
+            print(f"\n  SYSTEMATIC BIAS BY STYLE (model-favored side; flags a fighter-type over-fire):")
+            _summ([r for r in style_recs if r[0] >= 0.60], "grappler favs")
+            _summ([r for r in style_recs if r[0] <  0.40], "striker favs")
+            _summ([r for r in style_recs if 0.40 <= r[0] < 0.60], "balanced favs")
+
             # Flat-stake ROI at several minimum-edge thresholds (model prob exceeds the
             # de-vigged book prob by at least `thr`).  thr=0 backs every disagreement.
             print(f"\n  FLAT-STAKE ROI by minimum model-vs-book edge (1u/bet, closing odds):")
             print(f"    {'min edge':>8}  {'bets':>5}  {'P/L (u)':>9}  {'ROI':>8}")
             for thr in [0.00, 0.03, 0.05, 0.08, 0.10]:
-                sel = [(d, w) for e, d, w in bet_recs if e >= thr]
+                sel = [(d, w) for e, d, w, _bd, _bp in bet_recs if e >= thr]
                 if not sel:
                     print(f"    {thr*100:>6.0f}%   {'0':>5}  {'--':>9}  {'--':>8}")
                     continue
@@ -875,6 +907,18 @@ def main():
             print("  (small N -- ROI here is dominated by variance; sign + magnitude only,")
             print("   not a tradeable estimate.  Model log-loss vs book log-loss is the more")
             print("   reliable read on whether the model adds information over the line.)")
+
+            # optional per-bet dump for the underdog / time-split "sliver" investigation
+            if os.environ.get("UFC_BET_DUMP"):
+                import csv as _csv
+                dump_path = os.path.join(BASE, os.environ["UFC_BET_DUMP"])
+                with open(dump_path, "w", newline="", encoding="utf-8") as _f:
+                    _wr = _csv.writer(_f)
+                    _wr.writerow(["date", "edge", "dec_odds", "won", "book_prob_bet_side", "is_underdog"])
+                    for e, d, w, bd, bp in bet_recs:
+                        _wr.writerow([pd.Timestamp(bd).strftime("%Y-%m-%d"), f"{e:.4f}",
+                                      f"{d:.4f}", w, f"{bp:.4f}", 1 if bp < 0.5 else 0])
+                print(f"  [dumped {len(bet_recs)} bet records to {os.path.basename(dump_path)}]")
 
     # ---------------------------------------------------------------------- #
     #  STRONG/WEAK breakdown (by division) on tier-2 as-of

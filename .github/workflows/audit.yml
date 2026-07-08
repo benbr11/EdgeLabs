@@ -1,0 +1,33 @@
+name: Weekly model-vs-market audit
+# Every Monday: re-price recent fights vs the closing line, log the model's market-relative
+# record, and flag any systematic fighter-type bias (the automated "compare our odds to the
+# market and catch issues" loop). It DETECTS + LOGS only -- it never auto-changes the model,
+# because big model-vs-market gaps are often the model's real edge, and auto-tuning toward the
+# market would erase it. Flagged items are candidates for a human-validated fix.
+on:
+  schedule:
+    - cron: "0 13 * * 1"   # Mondays 13:00 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: weekly-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pandas numpy
+      - name: Run weekly model-vs-market audit
+        run: python ufc_odds_audit.py
+      - name: Commit updated audit log
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ufc_audit_log.csv
+          git commit -m "weekly model-vs-market audit ($(date -u +%F))" || echo "no changes to log"
+          git push || echo "nothing to push"

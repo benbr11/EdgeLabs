@@ -7,8 +7,8 @@
 (function(){
   var body = document.getElementById('accuracy-body'); if(!body) return;
   var S = [
-    { icon:'🥊', name:'UFC',          ours:65.3, vegas:'~66%',   verdict:'At market', beat:false,
-      tier:'High-confidence picks (≥80%): 82.0%', n:'812-fight walk-forward' },
+    { icon:'🥊', name:'UFC',          ours:69.8, vegas:'~66%',   verdict:'At market vs closing line', beat:false,
+      tier:'Best-bet picks (≥75%): 82.5%', n:'clean walk-forward · at market head-to-head vs the book' },
     { icon:'🏀', name:'NBA',          ours:67.4, vegas:'~69%',   verdict:'Matches the books', beat:false,
       tier:'Top picks (≥80%): 83.7%', n:'2,462 games' },
     { icon:'🏈', name:'NFL',          ours:65.9, vegas:'~66%',   verdict:'Matches Vegas', beat:false,
@@ -21,6 +21,24 @@
       tier:'Top picks (≥80%): 87.5%', n:'3,444 games (3-way)' },
   ];
   var head = '<div class="card"><div class="mini" style="line-height:1.5">Every number here is <b>out-of-sample</b> — the model predicted each game using only data available <i>before</i> it happened, then we checked it against the real result (no hindsight). The benchmark is the <b>Vegas closing line</b>, the sharpest aggregate of every expert’s opinion. We sit <b>at market level</b> across the board: these are strong, honest predictions — but tested head-to-head on a large sample, <b>no model here reliably beats the closing line</b>. Treat them as a sharp second opinion, not a betting edge.</div></div>';
+  // Live tournament track record — real 2026 World Cup results, predicted from PRE-tournament
+  // ratings (built before the tournament), so it's a clean out-of-sample scorecard.
+  function stat(v,l,c){ return '<div style="flex:1;min-width:84px;text-align:center">'+
+    '<div style="font-size:22px;font-weight:800;color:'+(c||'var(--accent)')+'">'+v+'</div>'+
+    '<div class="mini">'+l+'</div></div>'; }
+  var live = '<div class="card" style="border:1px solid rgba(52,211,153,.45)">'+
+    '<div class="row" style="justify-content:space-between;align-items:center">'+
+      '<div style="font-size:16px;font-weight:700">⚽ World Cup 2026 — live track record</div>'+
+      '<span class="tag" style="background:rgba(52,211,153,.16);color:var(--good)">96 games · thru R16</span>'+
+    '</div>'+
+    '<div class="mini" style="margin:6px 0 2px">Every 2026 match predicted from <b>pre-tournament</b> ratings vs the real result — a clean, no-hindsight scorecard of how the model is actually doing.</div>'+
+    '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">'+
+      stat('63.5%','pick accuracy (1X2)')+
+      stat('84.7%','favorite accuracy','var(--good)')+
+      stat('79%','knockout advance')+
+    '</div>'+
+    '<div class="mini" style="text-align:center;margin-top:8px">Draw rate called almost exactly (24 actual vs 24.8 expected) · log-loss 0.87</div>'+
+  '</div>';
   var cards = S.map(function(s){
     var badge = s.beat
       ? 'style="background:rgba(52,211,153,.16);color:var(--good)"'
@@ -41,6 +59,6 @@
       '<div class="mini" style="text-align:center;margin-top:6px"><b>'+s.tier+'</b> &nbsp;·&nbsp; '+s.n+'</div>'+
     '</div>';
   }).join('');
-  body.innerHTML = head + cards +
+  body.innerHTML = head + live + cards +
     '<div class="foot">Out-of-sample walk-forward backtests through June 2026 · straight-up winner accuracy at or near the market. The high-confidence tiers are where reliability is highest — but those are heavy favorites the market also nails, so they are a confidence filter, not a proven betting edge. Tested head-to-head vs de-vigged closing odds (UFC, 812 fights), the model sits at market, not above it.</div>';
 })();
